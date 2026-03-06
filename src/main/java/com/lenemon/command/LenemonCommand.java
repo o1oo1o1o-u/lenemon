@@ -1,0 +1,172 @@
+package com.lenemon.command;
+
+import com.lenemon.armor.ArmorEffectHandler;
+import com.lenemon.armor.BaseSpawnInfluence;
+import com.lenemon.armor.config.LoreBuilder;
+import com.lenemon.armor.sets.DevArmorSet;
+import com.lenemon.armor.sets.RayArmorSet;
+import com.lenemon.item.ModItems;
+import com.lenemon.network.LenemonNetwork;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.command.CommandSource;
+import net.minecraft.command.argument.EntityArgumentType;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.AttributeModifiersComponent;
+import net.minecraft.component.type.LoreComponent;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+
+
+import net.minecraft.item.Item;
+import java.util.List;
+
+/**
+ * The type Lenemon command.
+ */
+public class LenemonCommand {
+
+    /**
+     * Register.
+     */
+    public static void register() {
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(
+                    CommandManager.literal("lenemon")
+                            .requires(source -> source.hasPermissionLevel(2)) // OP niveau 2
+                            .then(CommandManager.literal("armor")
+                                    .then(CommandManager.literal("reload")
+                                            .executes(ctx -> executeReload(ctx.getSource()))
+                                    )
+                            )
+                            .then(CommandManager.literal("excaveon")
+                                    .then(CommandManager.literal("reload")
+                                            .executes(ctx -> executeExcaveonReload(ctx.getSource()))
+                                    )
+                            )
+                            .then(CommandManager.literal("give")
+                                    .then(CommandManager.argument("player", EntityArgumentType.player())
+                                            .then(CommandManager.argument("set", StringArgumentType.word())
+                                                    .suggests((ctx, builder) -> CommandSource.suggestMatching(
+                                                            List.of("dev", "ray"), builder
+                                                    ))
+                                                    .then(CommandManager.argument("piece", StringArgumentType.word())
+                                                            .suggests((ctx, builder) -> CommandSource.suggestMatching(
+                                                                    List.of("helmet", "chestplate", "leggings", "boots"), builder
+                                                            ))
+                                                            .executes(ctx -> executeGive(
+                                                                    ctx.getSource(),
+                                                                    EntityArgumentType.getPlayer(ctx, "player"),
+                                                                    StringArgumentType.getString(ctx, "set"),
+                                                                    StringArgumentType.getString(ctx, "piece")
+                                                            ))
+                                                    )
+                                            )
+                                    )
+                            )
+            );
+        });
+    }
+
+    private static int executeReload(ServerCommandSource source) {
+        // Recharger toutes les configs
+        ArmorEffectHandler.ARMOR_SETS.forEach(set -> set.reload());
+
+        // Vider le cache des spawn details
+        BaseSpawnInfluence.clearCache();
+
+        LenemonNetwork.sendAllArmorEffects(source.getServer());
+
+        source.sendMessage(
+                Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                        .append(Text.literal("Configs armures rechargées !").formatted(Formatting.GREEN))
+        );
+
+        System.out.println("[LeNeMon] Reload effectué par : " + source.getName());
+        return 1;
+    }
+
+    private static int executeGive(ServerCommandSource source, ServerPlayerEntity target, String setRaw, String pieceRaw) {
+        String set = setRaw.toLowerCase();
+        String piece = pieceRaw.toLowerCase();
+
+        Item item = resolveArmorItem(set, piece);
+        if (item == null) {
+            source.sendError(Text.literal("[LeNeMon] Set ou pièce invalide. Ex: dev helmet"));
+            return 0;
+        }
+
+        ItemStack stack = new ItemStack(item);
+
+
+
+        // Lore serveur basé sur JSON serveur
+        List<Text> loreLines = resolveLore(set, piece);
+        if (!loreLines.isEmpty()) {
+            stack.set(DataComponentTypes.LORE, new LoreComponent(loreLines));
+        }
+
+
+        boolean inserted = target.getInventory().insertStack(stack);
+        if (!inserted) {
+            target.dropItem(stack, false);
+        }
+
+        source.sendFeedback(() -> Text.literal("[LeNeMon] Donné: " + set + " " + piece + " à " + target.getName().getString()), false);
+        return 1;
+    }
+
+    private static Item resolveArmorItem(String set, String piece) {
+        return switch (set) {
+            case "dev" -> switch (piece) {
+                case "helmet" -> ModItems.DEV_HELMET;
+                case "chestplate" -> ModItems.DEV_CHESTPLATE;
+                case "leggings" -> ModItems.DEV_LEGGINGS;
+                case "boots" -> ModItems.DEV_BOOTS;
+                default -> null;
+            };
+            case "ray" -> switch (piece) {
+                case "helmet" -> ModItems.RAY_HELMET;
+                case "chestplate" -> ModItems.RAY_CHESTPLATE;
+                case "leggings" -> ModItems.RAY_LEGGINGS;
+                case "boots" -> ModItems.RAY_BOOTS;
+                default -> null;
+            };
+            default -> null;
+        };
+    }
+
+    private static List<Text> resolveLore(String set, String piece) {
+        return switch (set) {
+            case "dev" -> LoreBuilder.build(
+                    ArmorEffectHandler.getSet(DevArmorSet.class).getConfig(),
+                    piece
+            );
+            case "ray" -> LoreBuilder.build(
+                    ArmorEffectHandler.getSet(RayArmorSet.class).getConfig(),
+                    piece
+            );
+            default -> List.of();
+        };
+    }
+
+    private static int executeExcaveonReload(ServerCommandSource source) {
+        com.lenemon.pickaxe.ExcaveonConfigLoader.reload();
+
+        // AJOUT
+        com.lenemon.network.LenemonNetwork.sendAllExcaveonConfig(source.getServer());
+
+        source.sendMessage(
+                Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                        .append(Text.literal("Config Excavéon rechargée !").formatted(Formatting.GREEN))
+        );
+
+        System.out.println("[LeNeMon] Excavéon reload effectué par : " + source.getName());
+        return 1;
+    }
+}

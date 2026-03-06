@@ -1,0 +1,2491 @@
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoCancelHandler.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
+import com.cobblemon.mod.common.api.storage.pc.PCStore;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.lenemon.block.CasinoBlockEntity;
+import com.lenemon.block.CasinoState;
+import com.lenemon.casino.holo.CasinoHolograms;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import com.lenemon.casino.CasinoWorldData;
+import com.lenemon.casino.CasinoSpinHandler;
+import net.minecraft.server.world.ServerWorld;
+
+public class CasinoCancelHandler {
+
+    public static void cancel(ServerPlayerEntity player, CasinoBlockEntity entity, BlockPos pos) {
+        if (entity.isLocked()) {
+            player.sendMessage(Text.literal("§c[Casino] Impossible — un joueur est en train de jouer !"), false);
+            return;
+        }
+
+        NbtCompound pokemonNbt = entity.getPokemonData();
+        if (pokemonNbt == null) {
+            entity.setState(CasinoState.UNCONFIGURED);
+            entity.clearPokemon();
+            player.sendMessage(Text.literal("§e[Casino] Casino réinitialisé."), false);
+            return;
+        }
+
+        // Recrée le Pokémon depuis le NBT
+        Pokemon pokemon = new Pokemon();
+        pokemon.loadFromNBT(player.getServerWorld().getRegistryManager(), pokemonNbt);
+
+        // Tente d'ajouter à la party
+        PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                .getStorage().getParty(player);
+
+        boolean addedToParty = false;
+        if (!CasinoPokemonStorage.isPartyFull(party)) {
+            party.add(pokemon);
+            addedToParty = true;
+        }
+
+        if (!addedToParty) {
+            // Party pleine → envoi au PC
+            PCStore pc = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                    .getStorage().getPC(player.getUuid(), player.getServerWorld().getRegistryManager());
+            if (pc != null) {
+                pc.add(pokemon);
+                player.sendMessage(Text.literal("§e[Casino] Party pleine — Pokémon envoyé au PC."), false);
+            } else {
+                player.sendMessage(Text.literal("§c[Casino] Erreur : impossible de rendre le Pokémon !"), false);
+                return;
+            }
+        } else {
+            player.sendMessage(Text.literal("§a[Casino] Pokémon rendu à votre party !"), false);
+        }
+
+        entity.clearPokemon();
+        entity.setState(CasinoState.CONFIGURED);
+
+        player.sendMessage(Text.literal("§7Le casino est maintenant en attente d'un nouveau Pokémon."), false);
+    }
+
+    public static void cancelFromWorldData(ServerPlayerEntity player,
+                                           CasinoWorldData.CasinoData casino,
+                                           CasinoWorldData data, BlockPos pos) {
+        if (casino.locked) {
+            player.sendMessage(Text.literal("§c[Casino] Un spin est en cours !"), false);
+            return;
+        }
+
+        if (!CasinoPokemonStorage.hasPokemon(player.getServer(), casino.casinoUUID)) {
+            casino.state = CasinoState.UNCONFIGURED;
+            casino.pokemonDisplayName = "";
+            data.markDirty();
+            player.sendMessage(Text.literal("§e[Casino] Casino réinitialisé."), false);
+            return;
+        }
+
+        Pokemon pokemon = CasinoPokemonStorage.loadPokemon(
+                player.getServer(),
+                casino.casinoUUID,
+                player.getServerWorld().getRegistryManager()
+        );
+
+        if (pokemon == null) {
+            player.sendMessage(Text.literal("§c[Casino] Erreur chargement Pokémon !"), false);
+            return;
+        }
+
+        PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                .getStorage().getParty(player);
+
+        if (!CasinoPokemonStorage.isPartyFull(party)) {
+            party.add(pokemon);
+            player.sendMessage(Text.literal("§a[Casino] Pokémon rendu à votre party !"), false);
+        } else {
+            PCStore pc = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                    .getStorage().getPC(player.getUuid(), player.getServerWorld().getRegistryManager());
+            if (pc != null) {
+                pc.add(pokemon);
+                player.sendMessage(Text.literal("§e[Casino] Party pleine — Pokémon envoyé au PC."), false);
+            } else {
+                player.sendMessage(Text.literal("§c[Casino] Impossible de rendre le Pokémon !"), false);
+                return;
+            }
+        }
+
+        CasinoPokemonStorage.deletePokemon(player.getServer(), casino.casinoUUID);
+        casino.pokemonDisplayName = "";
+        casino.state = CasinoState.CONFIGURED;
+        data.markDirty();
+
+        String ownerName = casino.ownerName != null && !casino.ownerName.isBlank()
+                ? casino.ownerName
+                : player.getName().getString();
+
+        BlockPos bottomPos = CasinoHolograms.resolveCasinoPos(data, pos);
+        CasinoHolograms.removeCasinoHologramAround(bottomPos);
+
+        CasinoHolograms.recreateClosedCasinoHologram(
+                player.getServerWorld(),
+                bottomPos,
+                ownerName,
+                casino.entryPrice,
+                casino.winChance / 100.0
+        );
+
+        player.sendMessage(Text.literal("§7Le casino attend un nouveau Pokémon."), false);
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoConfigSession.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoBlockEntity;
+import com.lenemon.block.CasinoState;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class CasinoConfigSession {
+
+    public CasinoWorldData.CasinoData casinoData;
+    public CasinoWorldData worldData;
+
+    public enum ConfigStep {
+        WAITING_PRICE,
+        WAITING_CHANCE
+    }
+
+    private static class Session {
+        final BlockPos pos;
+        final CasinoBlockEntity entity;
+        ConfigStep step;
+        long price;
+        CasinoWorldData.CasinoData casinoData;  // AJOUTE
+        CasinoWorldData worldData;              // AJOUTE
+
+        Session(BlockPos pos, CasinoBlockEntity entity) {
+            this.pos = pos;
+            this.entity = entity;
+            this.step = ConfigStep.WAITING_PRICE;
+        }
+    }
+
+    // Map des sessions actives par joueur
+    private static final Map<UUID, Session> activeSessions = new HashMap<>();
+
+    // ── Démarrage de la config ────────────────────────────
+
+    public static void startConfig(ServerPlayerEntity player, BlockPos pos, CasinoBlockEntity entity) {
+        // Si déjà une session active, on la remplace
+        activeSessions.put(player.getUuid(), new Session(pos, entity));
+
+        player.sendMessage(Text.literal(""), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§6§l  🎰 Configuration du Casino"), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§7Entrez le §fprix d'entrée §7(en PokéCoins) :"), false);
+        player.sendMessage(Text.literal("§7Exemple : §e500"), false);
+        player.sendMessage(Text.literal("§7Tapez §cannuler §7pour arrêter."), false);
+    }
+
+    // ── Enregistrement de l'intercepteur de messages ──────
+
+    public static void register() {
+        ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
+            UUID uuid = sender.getUuid();
+            if (!activeSessions.containsKey(uuid)) return true; // message normal
+
+            Session session = activeSessions.get(uuid);
+            String content = message.getContent().getString().trim();
+
+            // Annulation
+            if (content.equalsIgnoreCase("annuler")) {
+                activeSessions.remove(uuid);
+                sender.sendMessage(Text.literal("§c[Casino] Configuration annulée."), false);
+                return false; // bloque le message dans le chat public
+            }
+
+            switch (session.step) {
+                case WAITING_PRICE -> handlePrice(sender, session, content);
+                case WAITING_CHANCE -> handleChance(sender, session, content);
+            }
+
+            return false; // bloque TOUS les messages de config du chat public
+        });
+    }
+
+    // ── Étape 1 : Prix ────────────────────────────────────
+
+    private static void handlePrice(ServerPlayerEntity player, Session session, String input) {
+        try {
+            long price = Long.parseLong(input);
+            if (price <= 0) {
+                player.sendMessage(Text.literal("§c[Casino] Le prix doit être supérieur à 0."), false);
+                return;
+            }
+            session.price = price;
+            session.step = ConfigStep.WAITING_CHANCE;
+
+            player.sendMessage(Text.literal("§a[Casino] Prix défini : §f" + price + " PokéCoins"), false);
+            player.sendMessage(Text.literal("§7Entrez maintenant le §f% de chance de gain §7(0.01 à 100) :"), false);
+            player.sendMessage(Text.literal("§7Exemple : §e15.5 §7= 15.5% de chance"), false);
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(Text.literal("§c[Casino] Valeur invalide. Entrez un nombre entier."), false);
+        }
+    }
+
+    // ── Étape 2 : % de chance ─────────────────────────────
+
+    private static void handleChance(ServerPlayerEntity player, Session session, String input) {
+        try {
+            double percent = Double.parseDouble(input.replace(",", "."));
+            if (percent <= 0 || percent > 100) {
+                player.sendMessage(Text.literal("§c[Casino] Valeur entre 0.01 et 100 uniquement."), false);
+                return;
+            }
+
+            int winChance = (int) Math.round(percent * 100); // ex: 15.5% → 1550 sur 10000
+
+            if (session.entity != null) {
+                // Ancien système CasinoBlockEntity
+                session.entity.setEntryPrice(session.price);
+                session.entity.setWinChance(winChance);
+                if (session.entity.getCasinoState() == CasinoState.UNCONFIGURED) {
+                    session.entity.setState(CasinoState.CONFIGURED);
+                }
+            } else if (session.casinoData != null && session.worldData != null) {
+                // Nouveau système WorldData
+                session.casinoData.entryPrice = session.price;
+                session.casinoData.winChance = winChance;
+                if (session.casinoData.state == CasinoState.UNCONFIGURED) {
+                    session.casinoData.state = CasinoState.CONFIGURED;
+                }
+                session.worldData.markDirty();
+            }
+
+            activeSessions.remove(player.getUuid());
+
+            player.sendMessage(Text.literal("§a[Casino] Chance de gain : §f" + percent + "%"), false);
+            player.sendMessage(Text.literal(""), false);
+            player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+            player.sendMessage(Text.literal("§a§l  ✔ Casino configuré avec succès !"), false);
+            player.sendMessage(Text.literal("§7Prix    : §e" + session.price + " PokéCoins"), false);
+            player.sendMessage(Text.literal("§7Chance  : §e" + percent + "%"), false);
+            player.sendMessage(Text.literal("§7État    : §6En attente d'un Pokémon"), false);
+            player.sendMessage(Text.literal("§7→ Shift+clic pour ajouter votre Pokémon"), false);
+            player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+
+        } catch (NumberFormatException e) {
+            player.sendMessage(Text.literal("§c[Casino] Valeur invalide. Exemple : 15.5"), false);
+        }
+    }
+
+    // ── Utilitaire ────────────────────────────────────────
+
+    public static boolean hasActiveSession(UUID uuid) {
+        return activeSessions.containsKey(uuid);
+    }
+
+    public static void removeSession(UUID uuid) {
+        activeSessions.remove(uuid);
+    }
+
+    public static void startConfigFromWorldData(ServerPlayerEntity player, BlockPos pos,
+                                                CasinoWorldData.CasinoData casino,
+                                                CasinoWorldData data) {
+        Session session = new Session(pos, null);
+        session.casinoData = casino;
+        session.worldData = data;
+        activeSessions.put(player.getUuid(), session);
+
+        player.sendMessage(Text.literal(""), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§6§l  🎰 Configuration du Casino"), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§7Entrez le §fprix d'entrée §7(en PokéCoins) :"), false);
+        player.sendMessage(Text.literal("§7Exemple : §e500"), false);
+        player.sendMessage(Text.literal("§7Tapez §cannuler §7pour arrêter."), false);
+    }
+
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoHologramBootstrap.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoState;
+import com.lenemon.casino.holo.CasinoHolograms;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+
+public final class CasinoHologramBootstrap {
+
+    private CasinoHologramBootstrap() {}
+
+    public static void register() {
+        ServerWorldEvents.LOAD.register((server, world) -> rebuildForWorld(world));
+    }
+
+    private static void rebuildForWorld(ServerWorld world) {
+        CasinoWorldData data = CasinoWorldData.get(world);
+
+        for (var entry : data.getCasinosView().entrySet()) {
+            BlockPos pos = entry.getKey();
+            CasinoWorldData.CasinoData casino = entry.getValue();
+
+            double percent = casino.winChance / 100.0;
+
+            // Si ACTIVE et pokemonDisplayName present, on affiche "ouvert"
+            if (casino.state == CasinoState.ACTIVE && casino.pokemonDisplayName != null && !casino.pokemonDisplayName.isBlank()) {
+                CasinoHolograms.recreateConfiguredCasinoHologram(
+                        world,
+                        pos,
+                        casino.ownerName,
+                        casino.pokemonDisplayName,
+                        casino.entryPrice,
+                        percent
+                );
+            } else {
+                // UNCONFIGURED ou CONFIGURED (sans pokemon) -> "fermé"
+                CasinoHolograms.recreateClosedCasinoHologram(
+                        world,
+                        pos,
+                        casino.ownerName,
+                        casino.entryPrice,
+                        percent
+                );
+            }
+        }
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoItemHelper.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.NbtComponent;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+public class CasinoItemHelper {
+
+    public static ItemStack createCasinoItem() {
+        ItemStack casinoItem = new ItemStack(
+                net.minecraft.registry.Registries.ITEM.get(
+                        net.minecraft.util.Identifier.of("cobblemon", "pc")
+                )
+        );
+        casinoItem.set(DataComponentTypes.CUSTOM_NAME,
+                Text.literal("§6§l🎰 Casino"));
+        NbtCompound nbt = new NbtCompound();
+        nbt.putBoolean("isCasino", true);
+        casinoItem.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
+        return casinoItem;
+    }
+
+    public static void dropCasinoItem(ServerWorld world, BlockPos pos) {
+        ItemEntity itemEntity = new ItemEntity(
+                world,
+                pos.getX() + 0.5,
+                pos.getY() + 0.5,
+                pos.getZ() + 0.5,
+                createCasinoItem()
+        );
+        itemEntity.setPickupDelay(10);
+        world.spawnEntity(itemEntity);
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoMainScreen.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoBlockEntity;
+import com.lenemon.block.CasinoState;
+import com.lenemon.casino.CasinoCancelHandler;
+import com.lenemon.casino.CasinoConfigSession;
+import com.lenemon.casino.PokemonSelectSession;
+import com.lenemon.casino.CasinoSpinScreen;
+
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.ScreenHandlerType;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+public class CasinoMainScreen extends GenericContainerScreenHandler {
+
+    private static final int ROWS = 3;
+    private final ServerPlayerEntity viewer;
+    private final CasinoBlockEntity entity;
+    private final BlockPos pos;
+
+    public CasinoMainScreen(int syncId, PlayerInventory playerInventory,
+                            ServerPlayerEntity viewer, CasinoBlockEntity entity, BlockPos pos) {
+        super(ScreenHandlerType.GENERIC_9X3, syncId, playerInventory, new SimpleInventory(ROWS * 9), ROWS);
+        this.viewer = viewer;
+        this.entity = entity;
+        this.pos = pos;
+        redraw();
+    }
+
+    private void redraw() {
+        var inv = this.getInventory();
+
+        ItemStack filler = new ItemStack(Items.BLACK_STAINED_GLASS_PANE);
+        filler.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+        filler.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        for (int i = 0; i < ROWS * 9; i++) inv.setStack(i, filler.copy());
+
+        // Infos
+        ItemStack info = new ItemStack(Items.PAPER);
+        info.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§f§lInfos"));
+        info.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                Text.literal("§7Etat : §f" + entity.getCasinoState().name()),
+                Text.literal("§7Pokemon : §b" + (entity.getPokemonDisplayName().isEmpty() ? "Aucun" : entity.getPokemonDisplayName())),
+                Text.literal("§7Prix : §e" + entity.getEntryPrice() + " PokéCoins"),
+                Text.literal("§7Chance : §e" + (entity.getWinChance() / 100.0) + "%")
+        )));
+        info.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(4, info);
+
+        // Jouer
+        ItemStack play = new ItemStack(Items.EMERALD);
+        play.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§a§lJouer"));
+        play.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                Text.literal("§7Lance un spin"),
+                Text.literal("§7Prix : §e" + entity.getEntryPrice() + " PokéCoins")
+        )));
+        play.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(11, play);
+
+        // Mettre un Pokémon (owner)
+        ItemStack setPoke = new ItemStack(Items.NAME_TAG);
+        setPoke.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§b§lMettre un Pokemon"));
+        setPoke.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                Text.literal("§7Owner only"),
+                Text.literal("§7Choisir dans la party")
+        )));
+        setPoke.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(13, setPoke);
+
+        // Config (owner)
+        ItemStack config = new ItemStack(Items.COMPARATOR);
+        config.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§6§lConfigurer"));
+        config.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                Text.literal("§7Owner only"),
+                Text.literal("§7Prix + chance via chat")
+        )));
+        config.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(15, config);
+
+        // Annuler / rendre Pokémon (owner)
+        ItemStack cancel = new ItemStack(Items.BARRIER);
+        cancel.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§c§lAnnuler"));
+        cancel.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                Text.literal("§7Owner only"),
+                Text.literal("§7Rendre le Pokemon")
+        )));
+        cancel.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(22, cancel);
+
+        // Fermer
+        ItemStack close = new ItemStack(Items.IRON_DOOR);
+        close.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§7Fermer"));
+        close.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(26, close);
+
+        // Si casino pas jouable, on peut rendre le bouton “jouer” visuellement rouge
+        if (entity.getCasinoState() != CasinoState.ACTIVE || entity.isLocked()) {
+            ItemStack disabled = new ItemStack(Items.REDSTONE);
+            disabled.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§c§lIndisponible"));
+            disabled.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(java.util.List.of(
+                    Text.literal("§7Etat : §f" + entity.getCasinoState().name()),
+                    Text.literal(entity.isLocked() ? "§7Un spin est en cours" : "§7Aucun Pokemon en jeu")
+            )));
+            disabled.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, net.minecraft.util.Unit.INSTANCE);
+            inv.setStack(11, disabled);
+        }
+    }
+
+    private boolean isOwner(ServerPlayerEntity p) {
+        return entity.getOwnerUUID() != null && entity.getOwnerUUID().equals(p.getUuid());
+    }
+
+    @Override
+    public ItemStack quickMove(PlayerEntity player, int slot) {
+        return ItemStack.EMPTY;
+    }
+
+    @Override
+    public boolean canUse(PlayerEntity player) {
+        return true;
+    }
+
+    @Override
+    public void onSlotClick(int slotIndex, int button, SlotActionType actionType, PlayerEntity player) {
+        if (!(player instanceof ServerPlayerEntity sp)) return;
+
+        if (slotIndex == 26) {
+            sp.closeHandledScreen();
+            return;
+        }
+
+        // Jouer
+        if (slotIndex == 11) {
+            if (entity.isLocked() || entity.getCasinoState() != CasinoState.ACTIVE) {
+                sp.sendMessage(Text.literal("§c[Casino] Indisponible pour le moment."), false);
+                return;
+            }
+            sp.closeHandledScreen();
+            return;
+        }
+
+        // Owner actions
+        if (slotIndex == 13) {
+            if (!isOwner(sp)) {
+                sp.sendMessage(Text.literal("§c[Casino] Reserve au proprietaire."), false);
+                return;
+            }
+            if (CasinoConfigSession.hasActiveSession(sp.getUuid())) {
+                sp.sendMessage(Text.literal("§c[Casino] Une config est deja en cours (chat)."), false);
+                return;
+            }
+            // Mettre un Pokemon: on ouvre le select
+            sp.closeHandledScreen();
+            // handled by PCBlockMixin
+            return;
+        }
+
+        if (slotIndex == 15) {
+            if (!isOwner(sp)) {
+                sp.sendMessage(Text.literal("§c[Casino] Reserve au proprietaire."), false);
+                return;
+            }
+            sp.closeHandledScreen();
+            CasinoConfigSession.startConfig(sp, pos, entity);
+            return;
+        }
+
+        if (slotIndex == 22) {
+            if (!isOwner(sp)) {
+                sp.sendMessage(Text.literal("§c[Casino] Reserve au proprietaire."), false);
+                return;
+            }
+            sp.closeHandledScreen();
+            CasinoCancelHandler.cancel(sp, entity, pos);
+            return;
+        }
+    }
+
+    public static void open(ServerPlayerEntity player) {
+        // Variante: si tu veux un menu casino global sans bloc, a toi de choisir
+        player.sendMessage(Text.literal("§c[Casino] Ouvre via le bloc casino."), false);
+    }
+
+    public static void open(ServerPlayerEntity player, CasinoBlockEntity entity, BlockPos pos) {
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                (syncId, inv, p) -> new CasinoMainScreen(syncId, inv, player, entity, pos),
+                Text.literal("§8§l» §fCasino")
+        ));
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoPokemonPayout.java
+// ==================================================
+
+package com.lenemon.casino;
+
+
+import com.lenemon.block.CasinoBlockEntity;
+
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
+import com.cobblemon.mod.common.api.storage.pc.PCStore;
+
+public class CasinoPokemonPayout {
+
+    public static boolean givePokemonToPlayer(ServerPlayerEntity player, CasinoBlockEntity entity) {
+        NbtCompound pokemonNbt = entity.getPokemonData();
+        if (pokemonNbt == null) return false;
+
+        Pokemon pokemon = new Pokemon();
+        pokemon.loadFromNBT(player.getServerWorld().getRegistryManager(), pokemonNbt);
+
+        PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE.getStorage().getParty(player);
+        if (!CasinoPokemonStorage.isPartyFull(party)) {
+            party.add(pokemon);
+            entity.clearPokemon();
+            return true;
+        }
+
+        PCStore pc = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                .getStorage().getPC(player.getUuid(), player.getServerWorld().getRegistryManager());
+
+        if (pc == null) return false;
+
+        pc.add(pokemon);
+        entity.clearPokemon();
+        return true;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoPokemonStorage.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.StringNbtReader;
+import net.minecraft.registry.DynamicRegistryManager;
+import net.minecraft.server.MinecraftServer;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
+public class CasinoPokemonStorage {
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    private static File getFile(MinecraftServer server, UUID casinoUUID) {
+        File dir = new File(
+                server.getSavePath(net.minecraft.util.WorldSavePath.ROOT).toFile(),
+                "casino_pokemon"
+        );
+        dir.mkdirs();
+        return new File(dir, casinoUUID + ".json");
+    }
+
+    public static void savePokemon(MinecraftServer server, UUID casinoUUID,
+                                   Pokemon pokemon, DynamicRegistryManager registryManager) {
+        try {
+            // Cobblemon 1.7.x : saveToNBT retourne le NbtCompound
+            NbtCompound nbt = pokemon.saveToNBT(registryManager, new NbtCompound());
+
+            // Vérifie que le NBT n'est pas vide
+            if (nbt.isEmpty()) {
+                System.err.println("[Casino] Attention : NBT vide pour " + pokemon.getDisplayName(false).getString());
+            }
+
+            String nbtString = nbt.asString();
+
+            JsonObject json = new JsonObject();
+            json.addProperty("displayName", pokemon.getDisplayName(false).getString());
+            json.addProperty("level", pokemon.getLevel());
+            json.addProperty("shiny", pokemon.getShiny());
+            json.addProperty("species", pokemon.getSpecies().getName());
+            json.addProperty("nbt", nbtString);
+
+            File file = getFile(server, casinoUUID);
+            try (Writer writer = new OutputStreamWriter(
+                    new FileOutputStream(file), StandardCharsets.UTF_8)) {
+                GSON.toJson(json, writer);
+            }
+
+            System.out.println("[Casino] Pokémon sauvegardé : " + pokemon.getDisplayName(false).getString()
+                    + " | NBT size: " + nbt.getSize());
+
+        } catch (Exception e) {
+            System.err.println("[Casino] Erreur sauvegarde Pokémon : " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    public static Pokemon loadPokemon(MinecraftServer server, UUID casinoUUID,
+                                      DynamicRegistryManager registryManager) {
+        try {
+            File file = getFile(server, casinoUUID);
+            if (!file.exists()) return null;
+
+            JsonObject json;
+            try (Reader reader = new InputStreamReader(
+                    new FileInputStream(file), StandardCharsets.UTF_8)) {
+                json = JsonParser.parseReader(reader).getAsJsonObject();
+            }
+
+            // Reconstruit le NBT depuis la string
+            String nbtString = json.get("nbt").getAsString();
+            NbtCompound nbt = StringNbtReader.parse(nbtString);
+
+            // Charge le Pokémon depuis le NBT complet
+            return Pokemon.Companion.loadFromNBT(registryManager, nbt);
+
+        } catch (Exception e) {
+            System.err.println("[Casino] Erreur chargement Pokémon : " + e.getMessage());
+            return null;
+        }
+    }
+
+    public static void deletePokemon(MinecraftServer server, UUID casinoUUID) {
+        File file = getFile(server, casinoUUID);
+        if (file.exists()) file.delete();
+    }
+
+    public static boolean hasPokemon(MinecraftServer server, UUID casinoUUID) {
+        return getFile(server, casinoUUID).exists();
+    }
+
+    public static boolean isPartyFull(PlayerPartyStore party) {
+        if (party == null) return true;
+        int count = 0;
+        for (Pokemon p : party) {
+            if (p != null) count++;
+        }
+        return count >= 6;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoSpinHandler.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
+import com.cobblemon.mod.common.api.storage.pc.PCStore;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.lenemon.block.CasinoBlockEntity;
+import com.lenemon.block.CasinoState;
+import com.lenemon.casino.holo.CasinoHolograms;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.Random;
+
+public class CasinoSpinHandler {
+
+    private static final Random RANDOM = new Random();
+
+    public static void spin(ServerPlayerEntity player, CasinoBlockEntity entity, BlockPos pos) {
+
+        // ── 1. Verrou anti-spam ──────────────────────────
+        if (entity.isLocked()) {
+            player.sendMessage(Text.literal("§c[Casino] Déjà en cours, attendez !"), false);
+            return;
+        }
+        entity.setLocked(true);
+
+        // ── 2. Vérification solde via Impactor ───────────
+        long price = entity.getEntryPrice();
+        boolean hasFunds = checkAndDebit(player, price);
+
+        if (!hasFunds) {
+            entity.setLocked(false);
+            player.sendMessage(Text.literal("§c[Casino] Fonds insuffisants ! Il vous faut §e"
+                    + price + " PokéCoins§c."), false);
+            return;
+        }
+
+        // ── 3. RNG serveur ───────────────────────────────
+        int roll = RANDOM.nextInt(10000) + 1; // 1 à 10000
+        boolean win = roll <= entity.getWinChance();
+
+        // ── 4. Suspense (délai 2s via thread serveur) ────
+        player.sendMessage(Text.literal(""), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§6§l  🎰 Le casino tourne..."), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+
+        player.getServer().execute(() -> {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ignored) {}
+
+            player.getServer().execute(() -> resolveResult(player, entity, win, price));
+        });
+    }
+
+    private static void resolveResult(ServerPlayerEntity player, CasinoBlockEntity entity,
+                                      boolean win, long price) {
+        entity.setLocked(false);
+
+        if (win) {
+            // ── Victoire ─────────────────────────────────
+            NbtCompound pokemonNbt = entity.getPokemonData();
+            if (pokemonNbt == null) {
+                player.sendMessage(Text.literal("§c[Casino] Erreur : le Pokémon a disparu !"), false);
+                return;
+            }
+
+            Pokemon pokemon = new Pokemon();
+            pokemon.loadFromNBT(player.getServerWorld().getRegistryManager(), pokemonNbt);
+
+            // Donne le Pokémon au joueur
+            PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                    .getStorage().getParty(player);
+
+            boolean addedToParty = false;
+            if (!CasinoPokemonStorage.isPartyFull(party)) {
+                party.add(pokemon);
+                addedToParty = true;
+            }
+
+            if (!addedToParty) {
+                PCStore pc = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                        .getStorage().getPC(player.getUuid(), player.getServerWorld().getRegistryManager());
+                if (pc != null) {
+                    pc.add(pokemon);
+                }
+            }
+
+            // Vide le casino
+            entity.clearPokemon();
+            entity.setState(CasinoState.EMPTY);
+
+            // Messages victoire
+            player.sendMessage(Text.literal("§a§l  🎉 VOUS AVEZ GAGNÉ !"), false);
+            player.sendMessage(Text.literal("§7Pokémon obtenu : §b" + entity.getPokemonDisplayName()), false);
+            if (!addedToParty) {
+                player.sendMessage(Text.literal("§7(Party pleine → envoyé au PC)"), false);
+            }
+
+            // Notif au proprio
+            notifyOwner(player, entity, true, price);
+
+        } else {
+            // ── Défaite ───────────────────────────────────
+            player.sendMessage(Text.literal("§c§l  💔 Pas de chance cette fois..."), false);
+            player.sendMessage(Text.literal("§7Vous avez perdu §e" + price + " PokéCoins§7."), false);
+
+            notifyOwner(player, entity, false, price);
+        }
+
+
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+
+
+
+    }
+
+    private static void notifyOwner(ServerPlayerEntity player, CasinoBlockEntity entity,
+                                    boolean win, long price) {
+        if (entity.getOwnerUUID() == null) return;
+        ServerPlayerEntity owner = player.getServer()
+                .getPlayerManager().getPlayer(entity.getOwnerUUID());
+        if (owner == null) return; // owner hors ligne
+
+        if (win) {
+            owner.sendMessage(Text.literal("§e[Casino] §b" + player.getName().getString()
+                    + "§e a gagné votre Pokémon §b" + entity.getPokemonDisplayName() + "§e !"), false);
+        } else {
+            owner.sendMessage(Text.literal("§e[Casino] §b" + player.getName().getString()
+                    + "§e a joué et perdu §e" + price + " PokéCoins§e."), false);
+        }
+    }
+
+    // ── Impactor Economy ─────────────────────────────────
+
+    private static boolean checkAndDebit(ServerPlayerEntity player, long amount) {
+        try {
+            var service = net.impactdev.impactor.api.economy.EconomyService.instance();
+            var currency = service.currencies().primary();
+
+            var account = service.account(currency, player.getUuid()).join();
+
+            var balance = account.balance();
+            java.math.BigDecimal cost = java.math.BigDecimal.valueOf(amount);
+
+            if (balance.compareTo(cost) < 0) {
+                return false;
+            }
+
+            account.withdraw(cost);
+            return true;
+
+        } catch (Exception e) {
+            player.sendMessage(Text.literal("§c[Casino] Erreur economy : " + e.getMessage()), false);
+            return false;
+        }
+    }
+    private static void creditOwner(ServerPlayerEntity player, CasinoWorldData.CasinoData casino, long amount) {
+        try {
+            var service = net.impactdev.impactor.api.economy.EconomyService.instance();
+            var currency = service.currencies().primary();
+            var account = service.account(currency, casino.ownerUUID).join();
+            account.deposit(java.math.BigDecimal.valueOf(amount));
+        } catch (Exception e) {
+            player.sendMessage(Text.literal("§c[Casino] Erreur versement owner : " + e.getMessage()), false);
+        }
+    }
+    public static void spinFromWorldData(ServerPlayerEntity player,
+                                         CasinoWorldData.CasinoData casino,
+                                         CasinoWorldData data, BlockPos pos) {
+        if (casino.locked) {
+            player.sendMessage(Text.literal("§c[Casino] Déjà en cours, attendez !"), false);
+            return;
+        }
+        casino.locked = true;
+        data.markDirty();
+
+        long price = casino.entryPrice;
+        boolean hasFunds = checkAndDebit(player, price);
+
+        if (!hasFunds) {
+            casino.locked = false;
+            data.markDirty();
+            player.sendMessage(Text.literal("§c[Casino] Fonds insuffisants ! Il vous faut §e"
+                    + price + " PokéCoins§c."), false);
+            return;
+        }
+
+        // RNG serveur → résultat connu AVANT l'ouverture du GUI
+        int roll = RANDOM.nextInt(10000) + 1;
+        boolean win = roll <= casino.winChance;
+
+        // Ouvre le nouveau GUI avec le résultat pré-calculé
+        player.openHandledScreen(new net.minecraft.screen.SimpleNamedScreenHandlerFactory(
+                (syncId, inv, p) -> new com.lenemon.casino.screen.CasinoScreenHandler(
+                        syncId, inv, casino, data, pos
+                ),
+                net.minecraft.text.Text.literal("Casino")
+        ));
+    }
+
+    public static void resolveResultFromWorldData(ServerPlayerEntity player,
+                                                   CasinoWorldData.CasinoData casino,
+                                                   CasinoWorldData data, boolean win, long price) {
+        casino.locked = false;
+        creditOwner(player, casino, price);
+        if (win) {
+            Pokemon pokemon = CasinoPokemonStorage.loadPokemon(
+                    player.getServer(),
+                    casino.casinoUUID,
+                    player.getServerWorld().getRegistryManager()
+            );
+
+            if (pokemon == null) {
+                player.sendMessage(Text.literal("§c[Casino] Erreur : Pokémon introuvable !"), false);
+                data.markDirty();
+                return;
+            }
+
+            PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                    .getStorage().getParty(player);
+
+            boolean addedToParty = false;
+            if (!CasinoPokemonStorage.isPartyFull(party)) {
+                party.add(pokemon);
+                addedToParty = true;
+            }
+
+            if (!addedToParty) {
+                PCStore pc = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                        .getStorage().getPC(player.getUuid(), player.getServerWorld().getRegistryManager());
+                if (pc != null) pc.add(pokemon);
+            }
+
+
+
+            CasinoPokemonStorage.deletePokemon(player.getServer(), casino.casinoUUID);
+            String pokemonName = casino.pokemonDisplayName;
+            casino.pokemonDisplayName = "";
+            casino.state = CasinoState.EMPTY;
+            data.markDirty();
+
+            String ownerName = casino.ownerName != null && !casino.ownerName.isBlank()
+                    ? casino.ownerName
+                    : "Inconnu";
+
+
+            BlockPos casinoPos = data.getPosByCasinoUUID(casino.casinoUUID);
+            if (casinoPos == null) {
+                player.sendMessage(Text.literal("§c[Casino] Position du casino introuvable !"), false);
+                return;
+            }
+            CasinoHolograms.removeCasinoHologramAround(casinoPos);
+            CasinoHolograms.recreateClosedCasinoHologram(
+                    player.getServerWorld(),
+                    casinoPos,
+                    ownerName,
+                    casino.entryPrice,
+                    casino.winChance / 100.0
+            );
+
+            player.sendMessage(Text.literal("§a§l  🎉 VOUS AVEZ GAGNÉ !"), false);
+            player.sendMessage(Text.literal("§7Pokémon obtenu : §b" + pokemonName), false);
+            if (!addedToParty)
+                player.sendMessage(Text.literal("§7(Party pleine → envoyé au PC)"), false);
+
+            notifyOwnerFromWorldData(player, casino);
+        } else {
+            data.markDirty();
+            player.sendMessage(Text.literal("§c§l  💔 Pas de chance cette fois..."), false);
+            player.sendMessage(Text.literal("§7Vous avez perdu §e" + price + " PokéCoins§7."), false);
+            notifyOwnerFromWorldData(player, casino);
+        }
+
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+
+
+    }
+
+    private static void notifyOwnerFromWorldData(ServerPlayerEntity player,
+                                                 CasinoWorldData.CasinoData casino) {
+        if (casino.ownerUUID == null) return;
+        ServerPlayerEntity owner = player.getServer()
+                .getPlayerManager().getPlayer(casino.ownerUUID);
+        if (owner == null) return;
+        owner.sendMessage(Text.literal("§e[Casino] §b" + player.getName().getString()
+                + (casino.state == CasinoState.EMPTY
+                ? "§e a gagné le Pokémon de votre casino !"
+                : "§e a joué et perdu §e" + casino.entryPrice + " PokéCoins.")), false);
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoSpinScheduler.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoState;
+import com.lenemon.util.EconomyHelper;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.UUID;
+
+public final class CasinoSpinScheduler {
+
+    private CasinoSpinScheduler() {}
+
+    public static final int DEFAULT_DELAY_TICKS = 80; // doit matcher ton STOP_DELAY_TICKS client
+
+    private static final class PendingSpin {
+        final UUID casinoUuid;
+        final UUID playerUuid;
+        final long price;
+        final boolean win;
+        final int left;
+        final int right;
+        final int executeAtTick;
+
+        PendingSpin(UUID casinoUuid, UUID playerUuid, long price, boolean win, int left, int right, int executeAtTick) {
+            this.casinoUuid = casinoUuid;
+            this.playerUuid = playerUuid;
+            this.price = price;
+            this.win = win;
+            this.left = left;
+            this.right = right;
+            this.executeAtTick = executeAtTick;
+        }
+    }
+
+    // 1 pending par casino (anti double spin par casino)
+    private static final Map<UUID, PendingSpin> pendingByCasino = new HashMap<>();
+
+    public static boolean hasPending(UUID casinoUuid) {
+        return pendingByCasino.containsKey(casinoUuid);
+    }
+
+    public static void schedule(UUID casinoUuid, UUID playerUuid, long price, boolean win, int left, int right, int executeAtTick) {
+        pendingByCasino.put(casinoUuid, new PendingSpin(casinoUuid, playerUuid, price, win, left, right, executeAtTick));
+    }
+
+    public static void tick(MinecraftServer server) {
+        int now = server.getTicks();
+
+        Iterator<Map.Entry<UUID, PendingSpin>> it = pendingByCasino.entrySet().iterator();
+        while (it.hasNext()) {
+            PendingSpin p = it.next().getValue();
+
+            if (now < p.executeAtTick) continue;
+
+            it.remove();
+
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(p.playerUuid);
+
+            // joueur offline: refund + unlock, rien de plus
+            if (player == null) {
+                // On tente quand meme de unlock le casino si possible (via n'importe quel monde)
+                unlockCasinoAndMarkDirty(server, p.casinoUuid);
+
+                EconomyHelper.credit(p.playerUuid, p.price);
+                return;
+            }
+
+            var world = player.getServerWorld();
+            var data = CasinoWorldData.get(world);
+
+            CasinoWorldData.CasinoData casino = getCasinoByUUID(data, p.casinoUuid);
+            if (casino == null) {
+                // casino introuvable: refund quand meme
+                EconomyHelper.credit(player, p.price);
+                player.sendMessage(Text.literal("§c[Casino] Casino introuvable, remboursement effectué."), false);
+                return;
+            }
+
+            // Unlock avant resolve
+            casino.locked = false;
+            data.markDirty();
+
+            // Résolution finale: donne la reward si win, sinon message lose
+            // IMPORTANT: resolveResultFromWorldData doit etre la seule source de vérité pour la reward
+            CasinoSpinHandler.resolveResultFromWorldData(player, casino, data, p.win, p.price);
+        }
+    }
+
+    // Si tu as déjà data.getCasinoByUUID, remplace ce helper par ton appel direct
+    private static CasinoWorldData.CasinoData getCasinoByUUID(CasinoWorldData data, UUID casinoUuid) {
+        return data.getCasinoByUUID(casinoUuid);
+    }
+
+    private static void unlockCasinoAndMarkDirty(MinecraftServer server, UUID casinoUuid) {
+        for (var world : server.getWorlds()) {
+            var data = CasinoWorldData.get(world);
+            CasinoWorldData.CasinoData casino = null;
+
+            try {
+                casino = data.getCasinoByUUID(casinoUuid);
+            } catch (Throwable ignored) {}
+
+            if (casino != null) {
+                casino.locked = false;
+                data.markDirty();
+                return;
+            }
+        }
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoSpinScreen.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.ScreenHandlerType;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+public class CasinoSpinScreen extends GenericContainerScreenHandler {
+
+    private static final int ROWS = 3;
+
+    public CasinoSpinScreen(int syncId, PlayerInventory playerInventory, SimpleInventory inventory) {
+        super(ScreenHandlerType.GENERIC_9X3, syncId, playerInventory, inventory, ROWS);
+        drawIdle(inventory);
+    }
+
+    private void drawIdle(SimpleInventory inv) {
+        ItemStack filler = new ItemStack(Items.BLACK_STAINED_GLASS_PANE);
+        filler.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+        filler.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP,
+                net.minecraft.util.Unit.INSTANCE);
+        for (int i = 0; i < ROWS * 9; i++) inv.setStack(i, filler.copy());
+
+        // 3 laines grises initiales
+        ItemStack gray = new ItemStack(Items.GRAY_WOOL);
+        gray.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("§7?"));
+        gray.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP,
+                net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(11, gray.copy());
+        inv.setStack(13, gray.copy());
+        inv.setStack(15, gray.copy());
+    }
+
+    @Override
+    public ItemStack quickMove(PlayerEntity player, int slot) {
+        return ItemStack.EMPTY;
+    }
+
+    @Override
+    public boolean canUse(PlayerEntity player) {
+        return true;
+    }
+
+    @Override
+    public void onSlotClick(int slotIndex, int button, SlotActionType actionType, PlayerEntity player) {
+        if (!(player instanceof ServerPlayerEntity sp)) return;
+
+        ItemStack clicked = this.getInventory().getStack(slotIndex);
+        if (clicked.isEmpty()) return;
+
+        if (slotIndex == 22 || slotIndex == 20) {
+            sp.closeHandledScreen();
+            return;
+        }
+
+        if (slotIndex == 24) {
+            // Rejouer — récupère le casino depuis le SpinTicker
+            sp.closeHandledScreen();
+            CasinoSpinTicker.requestReplay(sp);
+        }
+    }
+
+    public static void open(ServerPlayerEntity player, CasinoWorldData.CasinoData casino,
+                            CasinoWorldData data, BlockPos pos) {
+        SimpleInventory inventory = new SimpleInventory(ROWS * 9);
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                (syncId, playerInv, p) -> new CasinoSpinScreen(syncId, playerInv, inventory),
+                Text.literal("§8§l» §f🎰 Spin en cours...")
+        ));
+        CasinoSpinTicker.start(player, casino, data, pos, inventory);
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoSpinTicker.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoState;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.Unit;
+
+import java.util.*;
+
+public class CasinoSpinTicker {
+
+    private static final int[] REEL_SLOTS = {11, 13, 15};
+    private static final int SPIN_TICKS = 60; // 3 secondes
+    private static final Map<UUID, SpinTask> TASKS = new HashMap<>();
+    private static boolean registered = false;
+    private static final Map<UUID, FinishedTask> FINISHED = new HashMap<>();
+
+    private static class FinishedTask {
+        final CasinoWorldData.CasinoData casino;
+        final CasinoWorldData data;
+        final BlockPos pos;
+
+        FinishedTask(CasinoWorldData.CasinoData casino, CasinoWorldData data, BlockPos pos) {
+            this.casino = casino;
+            this.data = data;
+            this.pos = pos;
+        }
+    }
+
+    private static class SpinTask {
+        final UUID playerId;
+        final CasinoWorldData.CasinoData casino;
+        final CasinoWorldData data;
+        final BlockPos pos;
+        final SimpleInventory inventory;
+        final boolean win;
+        int ticksLeft = SPIN_TICKS;
+        final Random rng = new Random();
+        final ServerPlayerEntity playerRef;
+
+
+
+
+        SpinTask(ServerPlayerEntity player, CasinoWorldData.CasinoData casino,
+                 CasinoWorldData data, BlockPos pos, SimpleInventory inventory, boolean win) {
+            this.playerId = player.getUuid();
+            this.casino = casino;
+            this.data = data;
+            this.pos = pos;
+            this.inventory = inventory;
+            this.win = win;
+            this.playerRef = player;
+        }
+    }
+
+    public static void register() {
+        if (registered) return;
+        registered = true;
+        ServerTickEvents.END_SERVER_TICK.register(CasinoSpinTicker::onTick);
+    }
+
+    public static void requestReplay(ServerPlayerEntity player) {
+        // Récupère la dernière tâche terminée pour ce joueur
+        // On stocke les infos dans une map séparée
+        FinishedTask finished = FINISHED.get(player.getUuid());
+        if (finished == null) return;
+
+        // Vérifie que le casino est encore jouable
+        if (finished.casino.state != com.lenemon.block.CasinoState.ACTIVE) {
+            player.sendMessage(Text.literal("§c[Casino] Ce casino n'est plus disponible."), false);
+            return;
+        }
+
+        CasinoSpinHandler.spinFromWorldData(player, finished.casino, finished.data, finished.pos);
+        FINISHED.remove(player.getUuid());
+    }
+
+    public static void start(ServerPlayerEntity player, CasinoWorldData.CasinoData casino,
+                             CasinoWorldData data, BlockPos pos, SimpleInventory inventory) {
+        register();
+        int roll = new Random().nextInt(10000) + 1;
+        boolean win = roll <= casino.winChance;
+        TASKS.put(player.getUuid(), new SpinTask(player, casino, data, pos, inventory, win));
+    }
+
+    private static void onTick(MinecraftServer server) {
+        if (TASKS.isEmpty()) return;
+
+        Iterator<Map.Entry<UUID, SpinTask>> it = TASKS.entrySet().iterator();
+        while (it.hasNext()) {
+            SpinTask task = it.next().getValue();
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(task.playerId);
+
+            if (player == null) {
+                // Joueur déconnecté → unlock
+                task.casino.locked = false;
+                task.data.markDirty();
+                it.remove();
+                continue;
+            }
+
+            // Animation toutes les 4 ticks
+            if (task.ticksLeft % 4 == 0) {
+                if (task.ticksLeft > 8) {
+                    // Animation aléatoire
+                    for (int slot : REEL_SLOTS) {
+                        task.inventory.setStack(slot, task.rng.nextBoolean() ? greenWool() : redWool());
+                    }
+                } else {
+                    // Dernières frames → fige sur le résultat
+                    if (task.win) {
+                        for (int slot : REEL_SLOTS) {
+                            task.inventory.setStack(slot, greenWool());
+                        }
+                    } else {
+                        // Aléatoire mais jamais 3 vertes
+                        ItemStack[] result = generateLoseResult(task.rng);
+                        for (int i = 0; i < REEL_SLOTS.length; i++) {
+                            task.inventory.setStack(REEL_SLOTS[i], result[i]);
+                        }
+                    }
+                }
+            }
+
+            task.ticksLeft--;
+            if (task.ticksLeft > 0) continue;
+
+            // Fin du spin → résout le résultat mais garde la fenêtre ouverte
+            CasinoSpinHandler.resolveResultFromWorldData(player, task.casino, task.data,
+                    task.win, task.casino.entryPrice);
+
+            if (task.win) {
+                // Bouton fermer uniquement
+                ItemStack closeBtn = new ItemStack(Items.EMERALD);
+                closeBtn.set(DataComponentTypes.CUSTOM_NAME,
+                        Text.literal("§a§l🎉 Vous avez gagné ! Cliquez pour fermer"));
+                closeBtn.set(DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+                task.inventory.setStack(22, closeBtn);
+            } else {
+                // Bouton fermer + bouton rejouer
+                ItemStack closeBtn = new ItemStack(Items.BARRIER);
+                closeBtn.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§c§lFermer"));
+                closeBtn.set(DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+                task.inventory.setStack(20, closeBtn);
+
+                ItemStack replayBtn = new ItemStack(Items.EMERALD);
+                replayBtn.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§a§lRejouer !"));
+                replayBtn.set(DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(
+                        List.of(Text.literal("§7Coût : §e" + task.casino.entryPrice + " PokéCoins"))));
+                replayBtn.set(DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+                task.inventory.setStack(24, replayBtn);
+            }
+            if (!task.win) {
+                FINISHED.put(task.playerId, new FinishedTask(task.casino, task.data, task.pos));
+            }
+            it.remove();
+        }
+    }
+
+    private static ItemStack[] generateLoseResult(Random rng) {
+        ItemStack[] result = new ItemStack[3];
+        // Génère jusqu'à avoir au moins un rouge
+        do {
+            for (int i = 0; i < 3; i++) {
+                result[i] = rng.nextBoolean() ? greenWool() : redWool();
+            }
+        } while (result[0].getItem() == Items.LIME_WOOL
+                && result[1].getItem() == Items.LIME_WOOL
+                && result[2].getItem() == Items.LIME_WOOL);
+        return result;
+    }
+
+    private static ItemStack greenWool() {
+        ItemStack item = new ItemStack(Items.LIME_WOOL);
+        item.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§a§l✔"));
+        item.set(DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+        return item;
+    }
+
+    private static ItemStack redWool() {
+        ItemStack item = new ItemStack(Items.RED_WOOL);
+        item.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§c§l✘"));
+        item.set(DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+        return item;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\CasinoWorldData.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.lenemon.block.CasinoState;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.PersistentState;
+import net.minecraft.world.PersistentStateManager;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.Collections;
+
+public class CasinoWorldData extends PersistentState {
+
+    private static final String KEY = "custommenu_casinos";
+    private final Map<BlockPos, CasinoData> casinos = new HashMap<>();
+    public Map<BlockPos, CasinoData> getCasinosView() {
+        return Collections.unmodifiableMap(casinos);
+    }
+
+    public static class CasinoData {
+        public UUID ownerUUID;
+        public String ownerName;
+        public long entryPrice;
+        public int winChance;
+        public UUID casinoUUID;
+        public String pokemonDisplayName = "";
+        public CasinoState state = CasinoState.UNCONFIGURED;
+        public boolean locked = false;
+        public String pokemonNature = "";
+        public String pokemonIVs = "";
+    }
+
+
+
+    public boolean isCasino(BlockPos pos) {
+        return casinos.containsKey(pos) || casinos.containsKey(pos.down());
+    }
+
+    public CasinoData getCasino(BlockPos pos) {
+        if (casinos.containsKey(pos)) return casinos.get(pos);
+        return casinos.get(pos.down());
+    }
+
+    public void registerCasino(BlockPos bottomPos, UUID ownerUUID, String ownerName) {
+        CasinoData data = new CasinoData();
+        data.ownerUUID = ownerUUID;
+        data.ownerName = ownerName;
+        data.casinoUUID = UUID.randomUUID();
+        casinos.put(bottomPos, data);
+        markDirty();
+    }
+
+    public void removeCasino(BlockPos pos) {
+        casinos.remove(pos);
+        casinos.remove(pos.down());
+        markDirty();
+    }
+
+    @Override
+    public NbtCompound writeNbt(NbtCompound nbt,
+                                net.minecraft.registry.RegistryWrapper.WrapperLookup registries) {
+        NbtList list = new NbtList();
+        casinos.forEach((pos, data) -> {
+            NbtCompound entry = new NbtCompound();
+            entry.putInt("x", pos.getX());
+            entry.putInt("y", pos.getY());
+            entry.putInt("z", pos.getZ());
+            entry.putUuid("ownerUUID", data.ownerUUID);
+            entry.putString("ownerName", data.ownerName);
+            entry.putLong("entryPrice", data.entryPrice);
+            entry.putInt("winChance", data.winChance);
+            entry.putUuid("casinoUUID", data.casinoUUID);
+            entry.putString("state", data.state.name());
+            entry.putBoolean("locked", false); // reset locked à chaque save
+            entry.putString("pokemonDisplayName", data.pokemonDisplayName);
+            entry.putString("pokemonNature", data.pokemonNature);
+            entry.putString("pokemonIVs", data.pokemonIVs);
+            list.add(entry);
+        });
+        nbt.put("casinos", list);
+        return nbt;
+    }
+
+    public static CasinoWorldData readNbt(NbtCompound nbt,
+                                          net.minecraft.registry.RegistryWrapper.WrapperLookup registries) {
+        CasinoWorldData data = new CasinoWorldData();
+        NbtList list = nbt.getList("casinos", 10);
+        for (int i = 0; i < list.size(); i++) {
+            NbtCompound entry = list.getCompound(i);
+            BlockPos pos = new BlockPos(
+                    entry.getInt("x"), entry.getInt("y"), entry.getInt("z"));
+            CasinoData casino = new CasinoData();
+            casino.ownerUUID = entry.getUuid("ownerUUID");
+            casino.ownerName = entry.getString("ownerName");
+            casino.entryPrice = entry.getLong("entryPrice");
+            casino.winChance = entry.getInt("winChance");
+            casino.casinoUUID = entry.getUuid("casinoUUID");
+            casino.locked = false; // toujours reset au démarrage
+            casino.pokemonDisplayName = entry.getString("pokemonDisplayName");
+            casino.pokemonNature = entry.getString("pokemonNature");
+            casino.pokemonIVs = entry.getString("pokemonIVs");
+            try {
+                casino.state = CasinoState.valueOf(entry.getString("state"));
+                // Si le serveur s'est arrêté pendant un spin → reset
+                if (casino.state == CasinoState.LOCKED) {
+                    casino.state = CasinoState.ACTIVE;
+                }
+            } catch (IllegalArgumentException e) {
+                casino.state = CasinoState.UNCONFIGURED;
+            }
+            data.casinos.put(pos, casino);
+        }
+        return data;
+    }
+
+    public static CasinoWorldData get(ServerWorld world) {
+        PersistentStateManager manager = world.getPersistentStateManager();
+        return manager.getOrCreate(
+                new Type<>(CasinoWorldData::new, CasinoWorldData::readNbt, null),
+                KEY
+        );
+    }
+
+    public boolean isRegisteredAt(BlockPos pos) {
+        return casinos.containsKey(pos);
+    }
+
+    public BlockPos getPosByCasinoUUID(UUID uuid) {
+        for (Map.Entry<BlockPos, CasinoData> entry : casinos.entrySet()) {
+            if (entry.getValue().casinoUUID.equals(uuid)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    public CasinoData getCasinoByUUID(UUID casinoUuid) {
+        // si tu as une map pos -> casinoData:
+        for (CasinoData c : this.casinos.values()) {
+            if (c != null && casinoUuid.equals(c.casinoUUID)) return c;
+        }
+        return null;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\holo\CasinoHolograms.java
+// ==================================================
+
+package com.lenemon.casino.holo;
+
+import com.lenemon.casino.CasinoWorldData;
+import dev.furq.holodisplays.api.HoloDisplaysAPI;
+import dev.furq.holodisplays.data.HologramData;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+
+public final class CasinoHolograms {
+    private static final HoloDisplaysAPI api = HoloDisplaysAPI.get("custom-menu-o1");
+    private CasinoHolograms() {}
+
+    public static String hologramId(BlockPos pos) {
+        return "casino_holo_" + pos.getX() + "_" + pos.getY() + "_" + pos.getZ();
+    }
+
+    public static String displayId(BlockPos pos) {
+        return "casino_disp_" + pos.getX() + "_" + pos.getY() + "_" + pos.getZ();
+    }
+
+    private static void wipe(BlockPos pos) {
+        String hId = hologramId(pos);
+        String dId = displayId(pos);
+
+        // Pas besoin des isRegistered, on tente et c'est tout
+        api.unregisterHologram(hId);
+        api.unregisterDisplay(dId);
+    }
+
+    public static void recreateInitialClosed(ServerWorld world, BlockPos pos, String ownerName) {
+        wipe(pos);
+
+        String dId = displayId(pos);
+        api.createTextDisplay(dId, b -> {
+            b.text("§e" + ownerName, "§cCasino fermé");
+            b.billboardMode("center");
+            b.shadow(true);
+            b.seeThrough(true);
+            b.opacity(0.95f);
+            b.scale(1.0f, 1.0f, 1.0f);
+        });
+
+        register(world, pos, dId, 1.8f);
+    }
+
+    public static void recreateConfiguredCasinoHologram(
+            ServerWorld world,
+            BlockPos pos,
+            String ownerName,
+            String pokemonName,
+            long price,
+            double percentChance
+    ) {
+        wipe(pos);
+
+        String dId = displayId(pos);
+        api.createTextDisplay(dId, b -> {
+            b.text(
+                    "§e" + ownerName,
+                    "§aCasino ouvert",
+                    "§fPokémon : §6" + pokemonName,
+                    "§fPrix : §e" + price + " PokéCoins",
+                    "§fChance : §d" + percentChance + "%"
+            );
+            b.billboardMode("center");
+            b.shadow(true);
+            b.seeThrough(false);
+            b.opacity(0.95f);
+            b.scale(1.0f, 1.0f, 1.0f);
+        });
+
+        register(world, pos, dId, 2.5f);
+    }
+
+    public static void recreateClosedCasinoHologram(
+            ServerWorld world,
+            BlockPos pos,
+            String ownerName,
+            long price,
+            double percentChance
+    ) {
+        wipe(pos);
+
+        String dId = displayId(pos);
+        api.createTextDisplay(dId, b -> {
+            b.text(
+                    "§e" + ownerName,
+                    "§cCasino fermé",
+                    "§fPrix : §e" + price + " PokéCoins",
+                    "§fChance : §d" + percentChance + "%"
+            );
+            b.billboardMode("center");
+            b.shadow(true);
+            b.seeThrough(true);
+            b.opacity(0.95f);
+            b.scale(1.0f, 1.0f, 1.0f);
+        });
+
+        register(world, pos, dId, 1.8f);
+    }
+
+    private static void register(ServerWorld world, BlockPos pos, String dId, float yOffset) {
+        String hId = hologramId(pos);
+        String dimensionId = world.getRegistryKey().getValue().toString();
+
+        HologramData hologram = api.createHologramBuilder()
+                .world(dimensionId)
+                .position(pos.getX() + 0.5f, pos.getY() + yOffset, pos.getZ() + 0.5f)
+                .billboardMode("center")
+                .updateRate(20)
+                .viewRange(48.0)
+                .addDisplay(dId, 0f, 0f, 0f)
+                .build();
+
+        api.registerHologram(hId, hologram);
+    }
+
+    public static void removeCasinoHologram(BlockPos pos) {
+        removeCasinoHologramAround(pos);
+    }
+
+    public static void purgeAll() {
+        int holos = api.unregisterAllHolograms();
+        int displays = api.unregisterAllDisplays();
+//        Lenemon.LOGGER.info("[CasinoHolo] purgeAll holos={} displays={}", holos, displays);
+    }
+
+    public static BlockPos resolveCasinoPos(CasinoWorldData data, BlockPos clickedPos) {
+        // priorité: pos exacte enregistrée
+        if (data.isRegisteredAt(clickedPos)) return clickedPos;
+
+        // cas clique sur le haut
+        BlockPos down = clickedPos.down();
+        if (data.isRegisteredAt(down)) return down;
+
+        // sécurité: si un jour tu reçois déjà le bas mais data est sur pos.up (rare)
+        BlockPos up = clickedPos.up();
+        if (data.isRegisteredAt(up)) return up;
+
+        // fallback: on renvoie la pos cliquée
+        return clickedPos;
+    }
+
+    public static void wipeBothHeights(BlockPos clickedPos) {
+        // supprime holo/display à la pos cliquée et à y-1 (cas PC 2 blocs)
+        removeCasinoHologram(clickedPos);
+        removeCasinoHologram(clickedPos.down());
+    }
+
+    public static void removeCasinoHologramAround(BlockPos pos) {
+        wipe(pos);
+        wipe(pos.down());
+        wipe(pos.up());
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\network\CasinoCanSpinRequestPayload.java
+// ==================================================
+
+package com.lenemon.casino.network;
+
+import com.lenemon.Lenemon;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.util.Identifier;
+
+public record CasinoCanSpinRequestPayload() implements CustomPayload {
+
+    public static final Id<CasinoCanSpinRequestPayload> ID =
+            new Id<>(Identifier.of(Lenemon.MOD_ID, "casino_can_spin_request"));
+
+    public static final PacketCodec<RegistryByteBuf, CasinoCanSpinRequestPayload> CODEC =
+            PacketCodec.unit(new CasinoCanSpinRequestPayload());
+
+    @Override
+    public Id<? extends CustomPayload> getId() {
+        return ID;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\network\CasinoCanSpinResponsePayload.java
+// ==================================================
+
+package com.lenemon.casino.network;
+
+import com.lenemon.Lenemon;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
+import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.util.Identifier;
+
+public record CasinoCanSpinResponsePayload(
+        boolean allowed,
+        long price,
+        long balance,
+        boolean locked
+) implements CustomPayload {
+
+    public static final Id<CasinoCanSpinResponsePayload> ID =
+            new Id<>(Identifier.of(Lenemon.MOD_ID, "casino_can_spin_response"));
+
+    public static final PacketCodec<RegistryByteBuf, CasinoCanSpinResponsePayload> CODEC =
+            PacketCodec.tuple(
+                    PacketCodecs.BOOL, CasinoCanSpinResponsePayload::allowed,
+                    PacketCodecs.VAR_LONG, CasinoCanSpinResponsePayload::price,
+                    PacketCodecs.VAR_LONG, CasinoCanSpinResponsePayload::balance,
+                    PacketCodecs.BOOL, CasinoCanSpinResponsePayload::locked,
+                    CasinoCanSpinResponsePayload::new
+            );
+
+    @Override
+    public Id<? extends CustomPayload> getId() {
+        return ID;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\network\CasinoSpinOutcomePayload.java
+// ==================================================
+
+package com.lenemon.casino.network;
+
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.util.Identifier;
+
+public record CasinoSpinOutcomePayload(boolean win, int left, int right) implements CustomPayload {
+
+    public static final Id<CasinoSpinOutcomePayload> ID =
+            new Id<>(Identifier.of("lenemon", "casino_spin_outcome"));
+
+    public static final PacketCodec<PacketByteBuf, CasinoSpinOutcomePayload> CODEC =
+            PacketCodec.of(
+                    (value, buf) -> {
+                        buf.writeBoolean(value.win());
+                        buf.writeVarInt(value.left());
+                        buf.writeVarInt(value.right());
+                    },
+                    buf -> new CasinoSpinOutcomePayload(
+                            buf.readBoolean(),
+                            buf.readVarInt(),
+                            buf.readVarInt()
+                    )
+            );
+
+    @Override
+    public Id<? extends CustomPayload> getId() { return ID; }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\network\CasinoSpinRequestPayload.java
+// ==================================================
+
+package com.lenemon.casino.network;
+
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.util.Identifier;
+
+public record CasinoSpinRequestPayload() implements CustomPayload {
+
+    public static final Id<CasinoSpinRequestPayload> ID =
+            new Id<>(Identifier.of("lenemon", "casino_spin_request"));
+
+    public static final PacketCodec<PacketByteBuf, CasinoSpinRequestPayload> CODEC =
+            PacketCodec.unit(new CasinoSpinRequestPayload());
+
+    @Override
+    public Id<? extends CustomPayload> getId() {
+        return ID;
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\network\CasinoSpinResultPayload.java
+// ==================================================
+
+package com.lenemon.casino.network;
+
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.util.Identifier;
+
+public record CasinoSpinResultPayload() implements CustomPayload {
+
+    public static final Id<CasinoSpinResultPayload> ID =
+            new Id<>(Identifier.of("lenemon", "casino_spin_result"));
+
+    public static final PacketCodec<PacketByteBuf, CasinoSpinResultPayload> CODEC =
+            PacketCodec.unit(new CasinoSpinResultPayload());
+
+    @Override
+    public Id<? extends CustomPayload> getId() { return ID; }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\PokemonSelectSession.java
+// ==================================================
+
+package com.lenemon.casino;
+
+import com.cobblemon.mod.common.api.storage.party.PlayerPartyStore;
+import com.cobblemon.mod.common.pokemon.Pokemon;
+import com.lenemon.block.CasinoState;
+import com.lenemon.casino.holo.CasinoHolograms;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.Inventory;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.ScreenHandlerType;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class PokemonSelectSession extends GenericContainerScreenHandler {
+
+    private static final int ROWS = 3;
+    private final ServerPlayerEntity owner;
+    private final CasinoWorldData.CasinoData casinoData;
+    private final CasinoWorldData worldData;
+    private final BlockPos casinoPos;
+    private final ServerWorld world;
+    private final List<Pokemon> partyPokemons = new ArrayList<>();
+
+    public PokemonSelectSession(int syncId, PlayerInventory playerInventory,
+                                Inventory inventory, ServerPlayerEntity owner,
+                                CasinoWorldData.CasinoData casinoData,
+                                CasinoWorldData worldData,
+                                BlockPos casinoPos, ServerWorld world) {
+        super(ScreenHandlerType.GENERIC_9X3, syncId, playerInventory, inventory, ROWS);
+        this.owner = owner;
+        this.casinoData = casinoData;
+        this.worldData = worldData;
+        this.casinoPos = casinoPos;
+        this.world = world;
+        populateParty();
+    }
+
+    private void populateParty() {
+        Inventory inv = this.getInventory();
+
+        // Fond gris
+        ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+        filler.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+        filler.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP,
+                net.minecraft.util.Unit.INSTANCE);
+        for (int i = 0; i < ROWS * 9; i++) {
+            inv.setStack(i, filler.copy());
+        }
+
+        // Récupère la party Cobblemon
+        PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                .getStorage().getParty(owner);
+
+        if (party == null) {
+            owner.sendMessage(Text.literal("§c[Casino] Impossible de lire votre party."), false);
+            return;
+        }
+
+        int[] slots = {10, 11, 12, 13, 14, 15};
+        int index = 0;
+
+        for (Pokemon pokemon : party) {
+            if (pokemon == null || index >= 6) continue;
+
+            partyPokemons.add(pokemon);
+
+            ItemStack pokemonItem = new ItemStack(Items.PAPER);
+            String shinyPrefix = pokemon.getShiny() ? "§e✦ §r" : "";
+            pokemonItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                    Text.literal(shinyPrefix + "§b" + pokemon.getDisplayName(false).getString()
+                            + " §7Niv." + pokemon.getLevel()));
+
+            List<Text> lore = new ArrayList<>();
+            lore.add(Text.literal("§7Nature : §f" + pokemon.getNature().getName().toString()));
+            lore.add(Text.literal("§7Shiny : " + (pokemon.getShiny() ? "§aOui" : "§cNon")));
+            lore.add(Text.literal("§7IVs : §f" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.HP) + "/" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.ATTACK) + "/" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.DEFENCE) + "/" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPECIAL_ATTACK) + "/" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPECIAL_DEFENCE) + "/" +
+                    pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPEED)));
+            lore.add(Text.literal(""));
+            lore.add(Text.literal("§e► Cliquez pour mettre en jeu"));
+
+            pokemonItem.set(net.minecraft.component.DataComponentTypes.LORE,
+                    new net.minecraft.component.type.LoreComponent(lore));
+            pokemonItem.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP,
+                    net.minecraft.util.Unit.INSTANCE);
+
+            inv.setStack(slots[index], pokemonItem);
+            index++;
+        }
+
+        if (partyPokemons.isEmpty()) {
+            owner.sendMessage(Text.literal("§c[Casino] Votre party est vide !"), false);
+        }
+
+        ItemStack cancel = new ItemStack(Items.BARRIER);
+        cancel.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                Text.literal("§c§lAnnuler"));
+        cancel.set(net.minecraft.component.DataComponentTypes.HIDE_ADDITIONAL_TOOLTIP,
+                net.minecraft.util.Unit.INSTANCE);
+        inv.setStack(22, cancel);
+    }
+
+    @Override
+    public ItemStack quickMove(PlayerEntity player, int slot) {
+        return ItemStack.EMPTY;
+    }
+
+    @Override
+    public boolean canUse(PlayerEntity player) {
+        return true;
+    }
+
+    @Override
+    public void onSlotClick(int slotIndex, int button, SlotActionType actionType, PlayerEntity player) {
+        if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
+
+        // Bloque shift+clic et tout autre action de déplacement
+        if (actionType == SlotActionType.QUICK_MOVE
+                || actionType == SlotActionType.THROW
+                || actionType == SlotActionType.SWAP
+                || actionType == SlotActionType.CLONE) {
+            return;
+        }
+
+        int[] slots = {10, 11, 12, 13, 14, 15};
+        for (int i = 0; i < slots.length; i++) {
+            if (slotIndex == slots[i] && i < partyPokemons.size()) {
+                selectPokemon(serverPlayer, partyPokemons.get(i));
+                return;
+            }
+        }
+
+        if (slotIndex == 22) {
+            serverPlayer.closeHandledScreen();
+        }
+    }
+
+
+
+    private void selectPokemon(ServerPlayerEntity player, Pokemon pokemon) {
+        player.closeHandledScreen();
+
+        PlayerPartyStore party = com.cobblemon.mod.common.Cobblemon.INSTANCE
+                .getStorage().getParty(player);
+        if (party == null) {
+            player.sendMessage(Text.literal("§c[Casino] Erreur party."), false);
+            return;
+        }
+        party.remove(pokemon);
+
+        // Sauvegarde dans le fichier externe
+        CasinoPokemonStorage.savePokemon(
+                player.getServer(),
+                casinoData.casinoUUID,
+                pokemon,
+                player.getServerWorld().getRegistryManager()
+        );
+
+        String displayName = pokemon.getDisplayName(false).getString()
+                + " Niv." + pokemon.getLevel()
+                + (pokemon.getShiny() ? " ✦" : "");
+        String nature = pokemon.getNature().getName().toString();
+        String ivs = pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.HP) + "/" +
+                pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.ATTACK) + "/" +
+                pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.DEFENCE) + "/" +
+                pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPECIAL_ATTACK) + "/" +
+                pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPECIAL_DEFENCE) + "/" +
+                pokemon.getIvs().get(com.cobblemon.mod.common.api.pokemon.stats.Stats.SPEED);
+
+        casinoData.pokemonNature = nature;
+        casinoData.pokemonIVs = ivs;
+
+        casinoData.pokemonDisplayName = displayName;
+        casinoData.state = CasinoState.ACTIVE;
+        worldData.markDirty();
+
+        // Recréation du holo "casino ouvert"
+        String ownerName;
+        if (casinoData.ownerName != null && !casinoData.ownerName.isBlank()) {
+            ownerName = casinoData.ownerName;
+        } else {
+            ownerName = owner.getName().getString(); // fallback
+        }
+
+        CasinoHolograms.recreateConfiguredCasinoHologram(
+                world,                 // champ de la session
+                casinoPos,             // champ de la session
+                ownerName,
+                displayName,
+                casinoData.entryPrice,
+                casinoData.winChance / 100.0
+        );
+
+        player.sendMessage(Text.literal(""), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+        player.sendMessage(Text.literal("§a§l  ✔ Casino activé !"), false);
+        player.sendMessage(Text.literal("§7Pokémon en jeu : §b" + displayName), false);
+        player.sendMessage(Text.literal("§7Prix d'entrée : §e" + casinoData.entryPrice + " PokéCoins"), false);
+        player.sendMessage(Text.literal("§7Chance de gain : §e" + (casinoData.winChance / 100.0) + "%"), false);
+        player.sendMessage(Text.literal("§8§l━━━━━━━━━━━━━━━━━━━━━━━━━━━"), false);
+
+    }
+
+    public static void open(ServerPlayerEntity player, CasinoWorldData.CasinoData casino,
+                            CasinoWorldData data, BlockPos clickedPos, ServerWorld world) {
+
+        final BlockPos bottomPos =
+                data.isRegisteredAt(clickedPos) ? clickedPos :
+                        data.isRegisteredAt(clickedPos.down()) ? clickedPos.down() :
+                                data.isRegisteredAt(clickedPos.up()) ? clickedPos.up() :
+                                        null;
+
+        if (bottomPos == null) {
+            player.sendMessage(Text.literal("§c[Casino] Casino introuvable (position invalide)."), false);
+            return;
+        }
+
+        SimpleInventory inventory = new SimpleInventory(ROWS * 9);
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                (syncId, playerInv, p) -> new PokemonSelectSession(
+                        syncId, playerInv, inventory, player, casino, data, bottomPos, world),
+                Text.literal("§8§l» §fChoisir un Pokémon")
+        ));
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\screen\CasinoScreenHandler.java
+// ==================================================
+
+package com.lenemon.casino.screen;
+
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.util.math.BlockPos;
+import com.lenemon.casino.CasinoWorldData;
+import net.minecraft.screen.PropertyDelegate;
+
+import java.util.Random;
+
+public class CasinoScreenHandler extends ScreenHandler {
+
+    // ── Données casino réelles ────────────────────────────────────────────
+    public final CasinoWorldData.CasinoData casinoData;
+    public final CasinoWorldData worldData;
+    public final BlockPos casinoPos;
+    private final PropertyDelegate properties;
+
+
+    // ── Résultat RNG (calculé au spin) ─────────────────────────────
+    private boolean win;
+    private int resultLeft;
+    private int resultRight;
+
+    private boolean canSpin = false;
+    private long lastPrice = 0;
+    private long lastBalance = 0;
+    private boolean casinoLocked = false;
+
+
+    public enum SpinState { IDLE, SPINNING, WIN, LOSE }
+    private SpinState spinState = SpinState.IDLE;
+
+    private final Random random = new Random();
+
+    // ── Constructeur minimal (pour l'enregistrement Fabric) ───────────────
+    public CasinoScreenHandler(int syncId, PlayerInventory playerInventory) {
+        super(CasinoScreenRegistry.CASINO_SCREEN_HANDLER, syncId);
+
+        this.casinoData = null;
+        this.worldData  = null;
+        this.casinoPos  = null;
+
+        this.properties = new PropertyDelegate() {
+            private long entry = 0;
+
+            @Override public int get(int index) {
+                return index == 0 ? (int) entry : 0;
+            }
+
+            @Override public void set(int index, int value) {
+                if (index == 0) entry = value;
+            }
+
+            @Override public int size() { return 1; }
+        };
+
+        this.addProperties(this.properties);
+    }
+
+    // ── Constructeur réel avec données casino ─────────────────────────────
+    public CasinoScreenHandler(int syncId, PlayerInventory playerInventory,
+                               CasinoWorldData.CasinoData casinoData,
+                               CasinoWorldData worldData,
+                               BlockPos casinoPos) {
+
+        super(CasinoScreenRegistry.CASINO_SCREEN_HANDLER, syncId);
+
+        this.casinoData = casinoData;
+        this.worldData  = worldData;
+        this.casinoPos  = casinoPos;
+
+        this.properties = new PropertyDelegate() {
+
+            @Override public int get(int index) {
+                if (index == 0) return (int) casinoData.entryPrice;
+                return 0;
+            }
+
+            @Override public void set(int index, int value) {}
+
+            @Override public int size() { return 1; }
+        };
+
+        this.addProperties(this.properties);
+    }
+
+//    public void requestSpin() {
+//        if (spinState != SpinState.IDLE) return;
+//        spinState = SpinState.SPINNING;
+//
+//        if (win) {
+//            // Victoire → les deux slots montrent la même icône
+//            resultLeft  = random.nextInt(4);
+//            resultRight = resultLeft;
+//            spinState   = SpinState.WIN;
+//        } else {
+//            // Défaite → on s'assure que les deux sont différents
+//            resultLeft  = random.nextInt(4);
+//            do { resultRight = random.nextInt(4); }
+//            while (resultRight == resultLeft);
+//            spinState = SpinState.LOSE;
+//        }
+//    }
+
+    public void requestSpin() {
+        if (spinState != SpinState.IDLE) return;
+        spinState = SpinState.SPINNING;
+    }
+
+//    public void applySpinResult(boolean win) {
+//        this.win = win;
+//
+//        if (win) {
+//            resultLeft  = random.nextInt(4);
+//            resultRight = resultLeft;
+//            spinState   = SpinState.WIN;
+//        } else {
+//            resultLeft  = random.nextInt(4);
+//            do { resultRight = random.nextInt(4); }
+//            while (resultRight == resultLeft);
+//            spinState = SpinState.LOSE;
+//        }
+//    }
+        public void applySpinResult(boolean win, int left, int right) {
+            this.win = win;
+            this.resultLeft = left;
+            this.resultRight = right;
+            this.spinState = win ? SpinState.WIN : SpinState.LOSE;
+        }
+
+    public void resetState()  { spinState = SpinState.IDLE; }
+
+    public int getResultLeft()      { return resultLeft; }
+    public int getResultRight()     { return resultRight; }
+    public SpinState getSpinState() { return spinState; }
+    public boolean isWin()          { return win; }
+    public long getEntryPrice() {
+        return properties.get(0);
+    }
+    public String getPokemonName()  { return casinoData != null ? casinoData.pokemonDisplayName : ""; }
+
+    @Override
+    public boolean canUse(PlayerEntity player) { return true; }
+
+    @Override
+    public ItemStack quickMove(PlayerEntity player, int slot) { return ItemStack.EMPTY; }
+
+    public void setCanSpin(boolean allowed, long price, long balance, boolean locked) {
+        this.canSpin = allowed;
+        this.lastPrice = price;
+        this.lastBalance = balance;
+        this.casinoLocked = locked;
+    }
+
+    public boolean canSpinNow() { return canSpin && spinState == SpinState.IDLE; }
+    public long getLastPrice() { return lastPrice; }
+    public long getLastBalance() { return lastBalance; }
+    public boolean canSpin() { return canSpin; }
+    public boolean isCasinoLocked() { return casinoLocked; }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\screen\CasinoScreenOpener.java
+// ==================================================
+
+package com.lenemon.casino.screen;
+
+import com.lenemon.casino.CasinoWorldData;
+import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+
+public class CasinoScreenOpener {
+
+    public static void open(ServerPlayerEntity player,
+                            CasinoWorldData.CasinoData casino,
+                            CasinoWorldData data,
+                            BlockPos pos) {
+
+        // Ici on n'enclenche rien: pas de lock, pas de debit, pas de RNG.
+        // "win" placeholder: il faudra le definir au moment du spin
+        boolean winPlaceholder = false;
+
+        player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                (syncId, inv, p) -> new CasinoScreenHandler(syncId, inv, casino, data, pos),
+                Text.literal("Casino")
+        ));
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\screen\CasinoScreenRegistry.java
+// ==================================================
+
+package com.lenemon.casino.screen;
+
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.resource.featuretoggle.FeatureSet;
+import net.minecraft.screen.ScreenHandlerType;
+import net.minecraft.util.Identifier;
+
+public final class CasinoScreenRegistry {
+
+    private CasinoScreenRegistry() {}
+
+    public static ScreenHandlerType<CasinoScreenHandler> CASINO_SCREEN_HANDLER;
+
+    public static void register() {
+        CASINO_SCREEN_HANDLER = Registry.register(
+                Registries.SCREEN_HANDLER,
+                Identifier.of("lenemon", "casino"),
+                new ScreenHandlerType<>(CasinoScreenHandler::new, FeatureSet.empty())
+        );
+    }
+}
+
+
+// ==================================================
+// FILE: D:\___DEV___\SERV_MC_LEO\mods\lenemon-template-1.21.1\src\main\java\com\lenemon\casino\util\CasinoTextures.java
+// ==================================================
+
+package com.lenemon.casino.util;
+
+import net.minecraft.util.Identifier;
+
+public final class CasinoTextures {
+
+    private CasinoTextures() {}
+
+    // ── Textures ────────────────────────────────────────────────────────
+    public static final Identifier BACKGROUND   = Identifier.of("lenemon", "textures/gui/casino/casino_background.png");
+    public static final Identifier SLOT_LEFT    = Identifier.of("lenemon", "textures/gui/casino/casino_slot_left.png");
+    public static final Identifier SLOT_RIGHT   = Identifier.of("lenemon", "textures/gui/casino/casino_slot_right.png");
+    public static final Identifier BTN_NORMAL   = Identifier.of("lenemon", "textures/gui/casino/casino_btn_normal.png");
+    public static final Identifier BTN_CLICKED  = Identifier.of("lenemon", "textures/gui/casino/casino_btn_clicked.png");
+    public static final Identifier ICONS        = Identifier.of("lenemon", "textures/gui/casino/casino_icons.png");
+
+    // ── Taille du canvas texture (toujours 256x256) ─────────────────────
+    public static final int TEX_SIZE = 256;
+    public static final int GUI_U_OFFSET = 31;
+
+    // ── Coordonnées issues de Photoshop (espace texture 256x256) ────────
+    // Slot gauche
+    public static final int SLOT_L_TX = 43 - GUI_U_OFFSET,  SLOT_L_TY = 36;
+    public static final int SLOT_L_TW = 38,  SLOT_L_TH = 109;
+
+    // Slot droit
+    public static final int SLOT_R_TX = 175 - GUI_U_OFFSET, SLOT_R_TY = 37;
+    public static final int SLOT_R_TW = 40,  SLOT_R_TH = 107;
+
+    // Zone centrale
+    public static final int CENTER_TX = 95 - GUI_U_OFFSET,  CENTER_TY = 45;
+    public static final int CENTER_TW = 66,  CENTER_TH = 101;
+
+    // Bouton SPIN (centre)
+    public static final int BTN_CX = 128 - GUI_U_OFFSET, BTN_CY = 183;
+    public static final int BTN_W  = 52,  BTN_H  = 52; // rayon ~26px autour du centre
+
+    // ── Spritesheet icônes : 4 colonnes x 2 lignes, chaque icône 32x32 ──
+    public static final int ICON_SIZE   = 32;
+    public static final int ICON_COUNT  = 4;  // nombre d'icônes différentes
+
+    // ligne 0 = normal, ligne 1 = glow victoire
+    public static int iconU(int index)          { return index * ICON_SIZE; }
+    public static int iconV(boolean glowState)  { return glowState ? ICON_SIZE : 0; }
+
+    // ── Taille d'affichage du GUI (échelle 1:1 avec la texture) ─────────
+    public static final int GUI_WIDTH  = 193;
+    public static final int GUI_HEIGHT = 256;
+
+    public static final int BTN_U = 128 - (BTN_W / 2);
+    public static final int BTN_V = 183 - (BTN_H / 2);
+
+}

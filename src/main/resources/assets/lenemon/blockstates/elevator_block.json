@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "lenemon:block/elevator_block"
+    }
+  }
+}

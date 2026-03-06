@@ -1,0 +1,146 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	maven { url "https://maven.terraformersmc.com/releases" }
+	maven { url "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+	maven { url "https://maven.impactdev.net/repository/development/" }
+	maven { url "https://maven.fabricmc.net/" }
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+	}
+	maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"lenemon" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+fabricApi {
+	configureDataGeneration {
+		client = true
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modRuntimeOnly "com.terraformersmc:modmenu:11.0.3"
+	modImplementation "software.bernie.geckolib:geckolib-fabric-1.21.1:4.8.3"
+	modImplementation "com.cobblemon:fabric:1.7.3+1.21.1"
+	modImplementation "net.fabricmc:fabric-language-kotlin:1.12.3+kotlin.2.0.21"
+	modImplementation "me.lucko:fabric-permissions-api:0.3.1"
+
+	modCompileOnly files('libs/Cobblemon-fabric-1.7.3+1.21.1.jar')
+	modCompileOnly files('libs/Impactor-Fabric-5.3.5+1.21.1.jar')
+	modImplementation files("libs/Cobblemon-fabric-1.7.3+1.21.1.jar")
+	modImplementation files("libs/Impactor-Fabric-5.3.5+1.21.1.jar")
+
+	modImplementation("maven.modrinth:holodisplays:0.4.8")
+	compileOnly "net.luckperms:api:5.4"
+
+}
+
+processResources {
+	inputs.property "version", project.version
+	filesMatching("fabric.mod.json") {
+		expand "version": inputs.properties.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	inputs.property "archivesName", project.base.archivesName
+	from("LICENSE") {
+		rename { "${it}_${inputs.properties.archivesName}" }
+	}
+}
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
+			from components.java
+		}
+	}
+}
+
+def remapJarTask = tasks.named("remapJar")
+
+tasks.register("fixedJar", Copy) {
+	dependsOn remapJarTask
+
+	from(remapJarTask.map { it.archiveFile.get().asFile })
+	into("$buildDir/libs")
+
+	rename { "lenemon-1.0.0.jar" }
+}
+
+tasks.named("build") {
+	dependsOn("fixedJar")
+}
+
+import java.security.MessageDigest
+
+def fixedJarName = "lenemon-1.0.0.jar"
+def libsDir = file("$buildDir/libs")
+
+tasks.register("generateSha256") {
+	dependsOn("fixedJar")
+
+	doLast {
+		def jarFile = new File(libsDir, fixedJarName)
+
+		if (!jarFile.exists()) {
+			throw new GradleException("Jar introuvable: " + jarFile.absolutePath)
+		}
+
+		MessageDigest digest = MessageDigest.getInstance("SHA-256")
+		jarFile.withInputStream { is ->
+			byte[] buffer = new byte[8192]
+			int read
+			while ((read = is.read(buffer)) != -1) {
+				digest.update(buffer, 0, read)
+			}
+		}
+
+		def hash = digest.digest().encodeHex().toString().toUpperCase()
+
+		def shaFile = new File(libsDir, "lenemon-1.0.0.sha256")
+		shaFile.text = hash
+
+		println "SHA256 généré: ${hash}"
+	}
+}
+
+tasks.named("build") {
+	dependsOn("generateSha256")
+}

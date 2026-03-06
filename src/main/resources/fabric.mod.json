@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "lenemon",
+	"version": "${version}",
+	"name": "LeNeMon",
+	"description": "Mod pour le serveur LeNeMon",
+	"authors": ["LeNeMon fOox974"],
+	"license": "All Rights Reserved",
+	"icon": "assets/lenemon/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.lenemon.Lenemon"],
+		"client": ["com.lenemon.LenemonClient"]
+	},
+	"mixins": [
+		"lenemon.mixins.json",
+		"lenemon.client.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.15.0",
+		"fabric-api": "*",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"geckolib": ">=4.0",
+		"cobblemon": ">=1.7.3",
+		"fabric-language-kotlin": ">=1.12.3+kotlin.2.0.21",
+		"holodisplays": "*"
+	}
+}

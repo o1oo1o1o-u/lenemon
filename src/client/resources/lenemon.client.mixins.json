@@ -1,0 +1,12 @@
+{
+	"required": true,
+	"package": "com.lenemon.mixin.client",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"TitleScreenMixin",
+		"GameRendererMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
