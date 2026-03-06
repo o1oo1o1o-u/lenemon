@@ -50,9 +50,9 @@ dependencies {
 	modImplementation "net.fabricmc:fabric-language-kotlin:1.12.3+kotlin.2.0.21"
 	modImplementation "me.lucko:fabric-permissions-api:0.3.1"
 
-	modCompileOnly files('libs/Cobblemon-fabric-1.7.3+1.21.1.jar')
+	//modCompileOnly files('libs/Cobblemon-fabric-1.7.3+1.21.1.jar')
 	modCompileOnly files('libs/Impactor-Fabric-5.3.5+1.21.1.jar')
-	modImplementation files("libs/Cobblemon-fabric-1.7.3+1.21.1.jar")
+	//modImplementation files("libs/Cobblemon-fabric-1.7.3+1.21.1.jar")
 	modImplementation files("libs/Impactor-Fabric-5.3.5+1.21.1.jar")
 
 	modImplementation("maven.modrinth:holodisplays:0.4.8")
