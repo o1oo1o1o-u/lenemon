@@ -1,38 +1,41 @@
 name: build
-on: [pull_request, push]
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      - name: validate gradle wrapper
+      - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
-      - name: setup jdk
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: 21
+          cache: gradle
 
-      - name: make gradle wrapper executable
+      - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: debug java
-        run: |
-          java -version
-          ./gradlew --version
+      - name: Build project
+        run: ./gradlew build --stacktrace
 
-      - name: build
-        run: ./gradlew build --stacktrace --info
-
-      - name: capture build artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Artifacts
+          name: lenemon-build
           path: build/libs/

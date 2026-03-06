@@ -5,6 +5,12 @@
 	"name": "LeNeMon",
 	"description": "Mod pour le serveur LeNeMon",
 	"authors": ["LeNeMon fOox974"],
+	"contact": {
+		"sources": "https://github.com/o1oo1o1o-u/lenemon",
+		"issues": "https://github.com/o1oo1o1o-u/lenemon/issues",
+		"homepage": "https://www.curseforge.com/minecraft/mc-mods/lenemon-fabric",
+		"discord": "https://discord.gg/azpDMRUGyp"
+	},
 	"license": "All Rights Reserved",
 	"icon": "assets/lenemon/icon.png",
 	"environment": "*",

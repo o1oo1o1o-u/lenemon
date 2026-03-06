@@ -3,6 +3,8 @@ plugins {
 	id 'maven-publish'
 }
 
+import java.security.MessageDigest
+
 version = project.mod_version
 group = project.maven_group
 
@@ -57,7 +59,6 @@ dependencies {
 
 	modImplementation("maven.modrinth:holodisplays:0.4.8")
 	compileOnly "net.luckperms:api:5.4"
-
 }
 
 processResources {
@@ -93,54 +94,82 @@ publishing {
 	}
 }
 
+def libsDir = file("$buildDir/libs")
+def versionedJarName = "${project.archives_base_name}-${project.version}.jar"
+def versionedShaName = "${project.archives_base_name}-${project.version}.sha256"
+def fixedJarName = "lenemon-1.0.0.jar"
+def fixedShaName = "lenemon-1.0.0.sha256"
+
+def makeFixedJar = project.hasProperty("localFixedJar") || gradle.startParameter.taskNames.contains("releaseLocal")
+
+def computeSha256 = { File inputFile, File outputFile ->
+	if (!inputFile.exists()) {
+		throw new GradleException("Fichier introuvable: " + inputFile.absolutePath)
+	}
+
+	MessageDigest digest = MessageDigest.getInstance("SHA-256")
+	inputFile.withInputStream { is ->
+		byte[] buffer = new byte[8192]
+		int read
+		while ((read = is.read(buffer)) != -1) {
+			digest.update(buffer, 0, read)
+		}
+	}
+
+	def hash = digest.digest().encodeHex().toString().toUpperCase()
+	outputFile.text = hash
+	println "SHA256 généré: ${outputFile.name} -> ${hash}"
+}
+
+tasks.register("generateVersionedSha256") {
+	dependsOn("remapJar")
+
+	doLast {
+		def jarFile = new File(libsDir, versionedJarName)
+		def shaFile = new File(libsDir, versionedShaName)
+		computeSha256(jarFile, shaFile)
+	}
+}
+
 def remapJarTask = tasks.named("remapJar")
 
 tasks.register("fixedJar", Copy) {
-	dependsOn remapJarTask
+	dependsOn(remapJarTask)
 
 	from(remapJarTask.map { it.archiveFile.get().asFile })
-	into("$buildDir/libs")
+	into(libsDir)
 
-	rename { "lenemon-1.0.0.jar" }
+	rename { fixedJarName }
+
+	onlyIf { makeFixedJar }
 }
 
-tasks.named("build") {
+tasks.register("generateFixedSha256") {
 	dependsOn("fixedJar")
-}
-
-import java.security.MessageDigest
-
-def fixedJarName = "lenemon-1.0.0.jar"
-def libsDir = file("$buildDir/libs")
-
-tasks.register("generateSha256") {
-	dependsOn("fixedJar")
+	onlyIf { makeFixedJar }
 
 	doLast {
 		def jarFile = new File(libsDir, fixedJarName)
-
-		if (!jarFile.exists()) {
-			throw new GradleException("Jar introuvable: " + jarFile.absolutePath)
-		}
-
-		MessageDigest digest = MessageDigest.getInstance("SHA-256")
-		jarFile.withInputStream { is ->
-			byte[] buffer = new byte[8192]
-			int read
-			while ((read = is.read(buffer)) != -1) {
-				digest.update(buffer, 0, read)
-			}
-		}
-
-		def hash = digest.digest().encodeHex().toString().toUpperCase()
-
-		def shaFile = new File(libsDir, "lenemon-1.0.0.sha256")
-		shaFile.text = hash
-
-		println "SHA256 généré: ${hash}"
+		def shaFile = new File(libsDir, fixedShaName)
+		computeSha256(jarFile, shaFile)
 	}
 }
 
 tasks.named("build") {
-	dependsOn("generateSha256")
+	dependsOn("generateVersionedSha256")
+
+	if (makeFixedJar) {
+		dependsOn("generateFixedSha256")
+	}
+}
+
+tasks.register("releaseLocal") {
+	group = "build"
+	description = "Build local complet avec jar fixe et SHA256"
+
+	doFirst {
+		project.ext.set("forceLocalFixedJar", true)
+	}
+
+	dependsOn("build", "fixedJar", "generateFixedSha256")
 }
