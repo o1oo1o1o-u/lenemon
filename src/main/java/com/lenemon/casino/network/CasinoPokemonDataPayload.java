@@ -14,7 +14,13 @@ import java.util.Set;
 /**
  * The type Casino pokemon data payload.
  */
-public record CasinoPokemonDataPayload(String species, Set<String> aspects) implements CustomPayload {
+public record CasinoPokemonDataPayload(
+        String species,
+        Set<String> aspects,
+        int winChance,
+        String displayName,
+        String nature,
+        String ivs) implements CustomPayload {
 
     /**
      * The constant ID.
@@ -33,6 +39,10 @@ public record CasinoPokemonDataPayload(String species, Set<String> aspects) impl
                         for (String aspect : value.aspects()) {
                             buf.writeString(aspect);
                         }
+                        buf.writeVarInt(value.winChance());
+                        buf.writeString(value.displayName());
+                        buf.writeString(value.nature());
+                        buf.writeString(value.ivs());
                     },
                     buf -> {
                         String species = buf.readString();
@@ -41,7 +51,11 @@ public record CasinoPokemonDataPayload(String species, Set<String> aspects) impl
                         for (int i = 0; i < size; i++) {
                             aspects.add(buf.readString());
                         }
-                        return new CasinoPokemonDataPayload(species, aspects);
+                        int winChance   = buf.readVarInt();
+                        String displayName = buf.readString();
+                        String nature   = buf.readString();
+                        String ivs      = buf.readString();
+                        return new CasinoPokemonDataPayload(species, aspects, winChance, displayName, nature, ivs);
                     }
             );
 

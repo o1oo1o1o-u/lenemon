@@ -85,7 +85,11 @@ public class CasinoServerEvents {
                     if (!handler.casinoData.pokemonSpecies.isEmpty()) {
                         ServerPlayNetworking.send(player, new CasinoPokemonDataPayload(
                                 handler.casinoData.pokemonSpecies,
-                                handler.casinoData.pokemonAspects
+                                handler.casinoData.pokemonAspects,
+                                handler.casinoData.winChance,
+                                handler.casinoData.pokemonDisplayName,
+                                handler.casinoData.pokemonNature,
+                                handler.casinoData.pokemonIVs
                         ));
                     }
                 })

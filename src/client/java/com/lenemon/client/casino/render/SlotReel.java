@@ -30,9 +30,9 @@ public class SlotReel {
     private static final float ACCEL         = 0.8f;   // px/tick d'accélération
     private static final float MAX_SPEED     = 12.0f;  // px/tick vitesse max
     private static final float DECEL         = 0.5f;   // px/tick de décélération
-    private static final int   ICON_SIZE     = 32;
-    private static final int   ICON_GAP      = 5;      // espace entre icônes
-    private static final int   CELL_HEIGHT   = ICON_SIZE + ICON_GAP; // 37px
+    private static final int   ICON_SIZE     = 32;  // taille apparente (scaled)
+    private static final int   ICON_GAP      = 8;   // espace entre icônes, un peu plus aéré
+    private static final int   CELL_HEIGHT   = ICON_SIZE + ICON_GAP; // 40px
 
     // ── État ─────────────────────────────────────────────────────────────
     private State state        = State.IDLE;

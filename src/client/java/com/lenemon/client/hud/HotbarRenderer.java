@@ -44,8 +44,13 @@ public class HotbarRenderer {
     private static void render(DrawContext context, RenderTickCounter tickCounter) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.options.hudHidden) return;
-        // Masquer quand un écran est ouvert (inventaire, etc.)
         if (client.currentScreen != null) return;
+
+        // Spectateur : rien du tout
+        if (client.player.isSpectator()) return;
+
+        // Créatif : pas de XP ni niveau
+        boolean showXp = !client.player.isCreative();
 
         int screenWidth  = client.getWindow().getScaledWidth();
         int screenHeight = client.getWindow().getScaledHeight();
@@ -87,38 +92,34 @@ public class HotbarRenderer {
             }
         }
 
-        // ── Barre XP (au-dessus des slots) ───────────────────────────────────
-        int xpBarY  = hotbarY - 8;   // 3 px de gap entre slots et barre XP
-        int xpBarW  = HOTBAR_WIDTH;
-        float xpPct = client.player.experienceProgress;
+        // ── Barre XP + encadré niveau (masqués en créatif) ───────────────────
+        int xpBarY = hotbarY - 8;
+        if (showXp) {
+            int xpBarW  = HOTBAR_WIDTH;
+            float xpPct = client.player.experienceProgress;
 
-        // Fond XP (réutilise colorBarBg existant dans HudConfig)
-        drawBorderedRect(context, hotbarX, xpBarY, xpBarW, 5,
-                HudConfig.colorBarBg, HudConfig.hotbarBorder);
-        // Remplissage (réutilise colorBarFill existant)
-        int xpFillW = (int) ((xpBarW - 2) * xpPct);
-        if (xpFillW > 0) {
-            context.fill(hotbarX + 1, xpBarY + 1,
-                    hotbarX + 1 + xpFillW, xpBarY + 4,
-                    HudConfig.colorBarFill);
+            drawBorderedRect(context, hotbarX, xpBarY, xpBarW, 5,
+                    HudConfig.colorBarBg, HudConfig.hotbarBorder);
+            int xpFillW = (int) ((xpBarW - 2) * xpPct);
+            if (xpFillW > 0) {
+                context.fill(hotbarX + 1, xpBarY + 1,
+                        hotbarX + 1 + xpFillW, xpBarY + 4,
+                        HudConfig.colorBarFill);
+            }
+
+            int level = client.player.experienceLevel;
+            String lvlText = "Niv. " + level;
+            int boxW = client.textRenderer.getWidth(lvlText) + 10;
+            int boxH = 12;
+            int boxX = screenWidth / 2 - boxW / 2;
+            int boxY = xpBarY - boxH - 2;
+            context.fill(boxX + 1, boxY + 1, boxX + boxW - 1, boxY + boxH - 1, HudConfig.hotbarBg);
+            context.fill(boxX,           boxY,           boxX + boxW, boxY + 1,         HudConfig.slotSelectedBorder);
+            context.fill(boxX,           boxY + boxH - 1, boxX + boxW, boxY + boxH,     HudConfig.slotSelectedBorder);
+            context.fill(boxX,           boxY,           boxX + 1,    boxY + boxH,      HudConfig.slotSelectedBorder);
+            context.fill(boxX + boxW - 1, boxY,          boxX + boxW, boxY + boxH,      HudConfig.slotSelectedBorder);
+            context.drawText(client.textRenderer, lvlText, boxX + 5, boxY + 2, HudConfig.colorXpText, true);
         }
-
-        // ── Encadré niveau (au-dessus de la barre XP) ────────────────────────
-        int level = client.player.experienceLevel;
-        String lvlText = "Niv. " + level;
-        int boxW = client.textRenderer.getWidth(lvlText) + 10;
-        int boxH = 12;
-        int boxX = screenWidth / 2 - boxW / 2;
-        int boxY = xpBarY - boxH - 2;
-        // Fond
-        context.fill(boxX + 1, boxY + 1, boxX + boxW - 1, boxY + boxH - 1, HudConfig.hotbarBg);
-        // Bordure
-        context.fill(boxX,          boxY,          boxX + boxW, boxY + 1,          HudConfig.slotSelectedBorder); // top
-        context.fill(boxX,          boxY + boxH - 1, boxX + boxW, boxY + boxH,     HudConfig.slotSelectedBorder); // bottom
-        context.fill(boxX,          boxY,          boxX + 1,    boxY + boxH,       HudConfig.slotSelectedBorder); // left
-        context.fill(boxX + boxW - 1, boxY,        boxX + boxW, boxY + boxH,       HudConfig.slotSelectedBorder); // right
-        // Texte
-        context.drawText(client.textRenderer, lvlText, boxX + 5, boxY + 2, HudConfig.colorXpText, true);
 
         // ── Nom de l'item tenu (remplace le tooltip vanilla, avec fade-out) ──
         int fade = ((InGameHudAccessor) client.inGameHud).getHeldItemTooltipFade();

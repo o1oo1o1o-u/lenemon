@@ -313,29 +313,26 @@ public class CasinoScreenHandler extends ScreenHandler {
 
     private String pokemonSpecies = "";
     private Set<String> pokemonAspects = new java.util.HashSet<>();
+    private int    syncedWinChance    = 0;
+    private String syncedDisplayName  = "";
+    private String syncedNature       = "";
+    private String syncedIVs          = "";
 
-    /**
-     * Sets pokemon render data.
-     *
-     * @param species the species
-     * @param aspects the aspects
-     */
-    public void setPokemonRenderData(String species, Set<String> aspects) {
-        this.pokemonSpecies = species;
-        this.pokemonAspects = aspects;
+    public void setPokemonRenderData(String species, Set<String> aspects,
+                                     int winChance, String displayName,
+                                     String nature, String ivs) {
+        this.pokemonSpecies      = species;
+        this.pokemonAspects      = aspects;
+        this.syncedWinChance     = winChance;
+        this.syncedDisplayName   = displayName;
+        this.syncedNature        = nature;
+        this.syncedIVs           = ivs;
     }
 
-    /**
-     * Gets pokemon species.
-     *
-     * @return the pokemon species
-     */
-    public String getPokemonSpecies() { return pokemonSpecies; }
-
-    /**
-     * Gets pokemon aspects.
-     *
-     * @return the pokemon aspects
-     */
+    public String getPokemonSpecies()   { return pokemonSpecies; }
     public Set<String> getPokemonAspects() { return pokemonAspects; }
+    public int    getSyncedWinChance()  { return syncedWinChance; }
+    public String getSyncedDisplayName(){ return syncedDisplayName; }
+    public String getSyncedNature()     { return syncedNature; }
+    public String getSyncedIVs()        { return syncedIVs; }
 }

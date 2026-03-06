@@ -28,6 +28,7 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
 
     // ── État visuel ───────────────────────────────────────────────────────
     private boolean btnPressed    = false;
+    private boolean btnHovered    = false;
     private boolean spinLocked    = false; // true pendant l'animation et après un win
     private boolean animDoneSent  = false; // ping serveur envoyé une seule fois
     private boolean hasWon        = false; // true si le dernier spin était un win
@@ -46,6 +47,11 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
     private String resultMessage = "";
 
     private ModelWidget modelWidget = null;
+
+    // ── Animation flip panneau central ────────────────────────────────────
+    /** Progression du flip : 0 = face modèle 3D, 1 = face infos textuelles. */
+    private float flipProgress = 0f;
+    private static final float FLIP_SPEED = 0.06f;
 
     /**
      * Instantiates a new Casino screen.
@@ -73,6 +79,11 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
         if (!species.isEmpty()) {
             this.pendingSpecies  = species;
             this.pendingAspects  = handler.getPokemonAspects();
+            this.infoWinChance   = handler.getSyncedWinChance();
+            this.infoDisplayName = handler.getSyncedDisplayName();
+            this.infoNature      = handler.getSyncedNature();
+            this.infoIVs         = handler.getSyncedIVs();
+            this.infoShiny       = handler.getPokemonAspects().contains("shiny");
         }
 
         //rebuildModelWidget();
@@ -101,8 +112,8 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
                 CasinoTextures.SLOT_R_TW, CasinoTextures.SLOT_R_TH,
                 reelRight, glow, this.client.getWindow().getScaleFactor());
 
-        CasinoRenderer.drawSpinButton(ctx, x, y, btnPressed && canStartSpin());
-        CasinoRenderer.drawBetBox(ctx, x, y, (int) handler.getEntryPrice());
+        CasinoRenderer.drawSpinButton(ctx, x, y, btnPressed && canStartSpin(), btnHovered && canStartSpin(), !canStartSpin());
+        CasinoRenderer.drawBetBox(ctx, x, y, (int) handler.getEntryPrice(), infoWinChance);
 
         if (winPulsing) {
             CasinoRenderer.drawWinOverlay(ctx, x, y, winAlpha);
@@ -118,10 +129,42 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
 //                    0xFFFFFF
 //            );
 //        }
-        if(!hasWon) {
-            if (modelWidget != null) {
-                modelWidget.render(ctx, mouseX, mouseY, delta);
+        // ── Flip panneau central ──────────────────────────────────────────
+        // Phase 0→0.5 : face modèle (scaleX décroît de 1→0)
+        // Phase 0.5→1 : face infos (scaleX croît de 0→1)
+        if (!hasWon) {
+            int pivotX = this.x + CasinoTextures.CENTER_TX + CasinoTextures.CENTER_TW / 2;
+            int pivotY = this.y + CasinoTextures.CENTER_TY + CasinoTextures.CENTER_TH / 2;
+            // cos(flipProgress * PI) va de +1 (flip=0) à -1 (flip=1), en passant par 0 (flip=0.5)
+            double scaleX = Math.cos(flipProgress * Math.PI);
 
+            if (flipProgress < 0.5f) {
+                // Face avant : modèle 3D
+                if (modelWidget != null) {
+                    if (flipProgress > 0f) {
+                        // Aplatie horizontalement autour du pivot central
+                        ctx.getMatrices().push();
+                        ctx.getMatrices().translate(pivotX, pivotY, 0);
+                        ctx.getMatrices().scale((float) scaleX, 1f, 1f);
+                        ctx.getMatrices().translate(-pivotX, -pivotY, 0);
+                        modelWidget.render(ctx, mouseX, mouseY, delta);
+                        ctx.getMatrices().pop();
+                    } else {
+                        // Pas d'animation : rendu direct sans transformation
+                        modelWidget.render(ctx, mouseX, mouseY, delta);
+                    }
+                }
+            } else {
+                // Face arrière : panneau d'infos textuelles
+                // |cos(flipProgress * PI)| croît de 0→1 sur [0.5, 1]
+                float absScaleX = (float) Math.abs(scaleX);
+                ctx.getMatrices().push();
+                ctx.getMatrices().translate(pivotX, pivotY, 0);
+                ctx.getMatrices().scale(absScaleX, 1f, 1f);
+                ctx.getMatrices().translate(-pivotX, -pivotY, 0);
+                CasinoRenderer.drawCenterInfoPanel(ctx, this.x, this.y,
+                        infoDisplayName, infoShiny, infoNature, infoIVs);
+                ctx.getMatrices().pop();
             }
         }
 
@@ -143,6 +186,7 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
                     0xFFFFFF
             );
         }
+
     }
 
     @Override
@@ -186,8 +230,22 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
             }
         }
 
+        btnHovered = isOverSpinButton(mouseX, mouseY);
+
+        // ── Mise à jour flip : avance vers 1 si la souris est sur la zone, recule sinon ──
+        boolean hoveringCenter = isOverCenterZone(mouseX, mouseY) && !infoDisplayName.isEmpty() && !hasWon;
+        if (hoveringCenter) flipProgress = Math.min(1f, flipProgress + FLIP_SPEED);
+        else                flipProgress = Math.max(0f, flipProgress - FLIP_SPEED);
+
         //this.renderBackground(ctx, mouseX, mouseY, delta);
         super.render(ctx, mouseX, mouseY, delta);
+    }
+
+    private boolean isOverCenterZone(int mouseX, int mouseY) {
+        int cx = this.x + CasinoTextures.CENTER_TX;
+        int cy = this.y + CasinoTextures.CENTER_TY;
+        return mouseX >= cx && mouseX <= cx + CasinoTextures.CENTER_TW
+            && mouseY >= cy && mouseY <= cy + CasinoTextures.CENTER_TH;
     }
 
     // ── Inputs ────────────────────────────────────────────────────────────
@@ -222,12 +280,10 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
     }
 
     private boolean isOverSpinButton(double mouseX, double mouseY) {
-        int cx = this.x + CasinoTextures.BTN_CX;
-        int cy = this.y + CasinoTextures.BTN_CY;
-        int r  = CasinoTextures.BTN_W / 2;
-        double dx = mouseX - cx;
-        double dy = mouseY - cy;
-        return dx * dx + dy * dy <= r * r;
+        int bx = this.x + CasinoTextures.BTN_X;
+        int by = this.y + CasinoTextures.BTN_Y;
+        return mouseX >= bx && mouseX <= bx + CasinoTextures.BTN_W
+            && mouseY >= by && mouseY <= by + CasinoTextures.BTN_H;
     }
 
     // ── Démarrage du spin ─────────────────────────────────────────────────
@@ -317,16 +373,25 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
     private String pendingSpecies = "";
     private Set<String> pendingAspects = new java.util.HashSet<>();
 
-    /**
-     * Update pokemon model.
-     *
-     * @param speciesName the species name
-     * @param aspects     the aspects
-     */
+    // Infos Pokémon synced depuis le serveur (pour tooltip)
+    private int    infoWinChance   = 0;
+    private String infoDisplayName = "";
+    private String infoNature      = "";
+    private String infoIVs         = "";
+    private boolean infoShiny      = false;
+
     public void updatePokemonModel(String speciesName, Set<String> aspects) {
         this.pendingSpecies = speciesName;
         this.pendingAspects = aspects;
         rebuildModelWidget();
+    }
+
+    public void updatePokemonInfo(int winChance, String displayName, String nature, String ivs, Set<String> aspects) {
+        this.infoWinChance   = winChance;
+        this.infoDisplayName = displayName;
+        this.infoNature      = nature;
+        this.infoIVs         = ivs;
+        this.infoShiny       = aspects.contains("shiny");
     }
 
     private void rebuildModelWidget() {
@@ -350,12 +415,12 @@ public class CasinoScreen extends HandledScreen<CasinoScreenHandler> {
         RenderablePokemon renderable = new RenderablePokemon(
                 species, pendingAspects, net.minecraft.item.ItemStack.EMPTY);
 
-        int px = this.x + CasinoTextures.CENTER_TX;
-        int py = this.y + CasinoTextures.CENTER_TY;
-        int pw = CasinoTextures.CENTER_TW;
-        int ph = CasinoTextures.CENTER_TH;
+        int px = this.x + CasinoTextures.CENTER_TX + 4;
+        int py = this.y + CasinoTextures.CENTER_TY + 4;
+        int pw = CasinoTextures.CENTER_TW - 8;
+        int ph = CasinoTextures.CENTER_TH - 8;
 
         modelWidget = new ModelWidget(px, py, pw, ph, renderable,
-                2.0f, 0f, 0.0, true, true);
+                2.5f, 0f, 0.0, true, true);
     }
 }

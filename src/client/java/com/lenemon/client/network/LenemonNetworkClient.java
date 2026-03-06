@@ -101,10 +101,14 @@ public class LenemonNetworkClient {
                 (payload, context) -> {
                     context.client().execute(() -> {
                         if (!(context.client().player.currentScreenHandler instanceof CasinoScreenHandler handler)) return;
-                        handler.setPokemonRenderData(payload.species(), payload.aspects());
+                        handler.setPokemonRenderData(payload.species(), payload.aspects(),
+                                payload.winChance(), payload.displayName(),
+                                payload.nature(), payload.ivs());
 
                         if (context.client().currentScreen instanceof com.lenemon.client.casino.screen.CasinoScreen screen) {
                             screen.updatePokemonModel(payload.species(), payload.aspects());
+                            screen.updatePokemonInfo(payload.winChance(), payload.displayName(),
+                                    payload.nature(), payload.ivs(), payload.aspects());
                         }
                     });
                 }
