@@ -4,12 +4,14 @@ import com.lenemon.armor.config.EffectConfig;
 import com.lenemon.casino.network.CasinoSpinOutcomePayload;
 import com.lenemon.casino.screen.CasinoScreenHandler;
 import com.lenemon.client.hud.HudBalanceCache;
+import com.lenemon.client.hud.HudFlightCache;
 import com.lenemon.client.hud.HudHunterCache;
 import com.lenemon.client.menu.screen.HunterMenuScreen;
 import com.lenemon.client.menu.screen.MenuScreen;
 import com.lenemon.client.menu.screen.TpMenuScreen;
 import com.lenemon.network.PacketArmorEffects;
 import com.lenemon.network.PacketHudBalance;
+import com.lenemon.network.PacketHudFlight;
 import com.lenemon.network.PacketHudHunter;
 import com.lenemon.network.menu.HunterMenuOpenPayload;
 import com.lenemon.network.menu.MenuOpenPayload;
@@ -51,6 +53,10 @@ public class LenemonNetworkClient {
 
         ClientPlayNetworking.registerGlobalReceiver(PacketHudHunter.ID, (payload, context) -> {
             HudHunterCache.set(payload.level(), payload.progress());
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(PacketHudFlight.ID, (payload, context) -> {
+            HudFlightCache.set(payload.active(), payload.staminaRatio());
         });
 
         // Dans register(), remplace TOUS les receivers casino par ceci :

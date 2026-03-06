@@ -42,4 +42,5 @@ replay_*.log
 # local dev
 .claude/
 ALL_LENEMON_CODE.txt
-libs/
+# Cobblemon jar trop large pour GitHub (>100MB) — disponible via Maven
+libs/Cobblemon-fabric-*.jar

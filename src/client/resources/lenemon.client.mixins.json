@@ -4,7 +4,9 @@
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"TitleScreenMixin",
-		"GameRendererMixin"
+		"GameRendererMixin",
+		"InGameHudMixin",
+		"InGameHudAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

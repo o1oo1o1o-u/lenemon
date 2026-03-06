@@ -39,6 +39,7 @@ public class LenemonNetwork {
         PayloadTypeRegistry.playS2C().register(PacketExcaveonConfig.ID, PacketExcaveonConfig.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketHudBalance.ID, PacketHudBalance.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketHudHunter.ID, PacketHudHunter.CODEC);
+        PayloadTypeRegistry.playS2C().register(PacketHudFlight.ID, PacketHudFlight.CODEC);
         PayloadTypeRegistry.playC2S().register(
                 CasinoSpinRequestPayload.ID,
                 CasinoSpinRequestPayload.CODEC

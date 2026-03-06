@@ -4,7 +4,10 @@ import com.lenemon.armor.config.EffectConfig;
 import com.lenemon.client.casino.screen.CasinoScreen;
 import com.lenemon.casino.screen.CasinoScreenRegistry;
 import com.lenemon.client.effects.ParticleArmorEffect;
+import com.lenemon.client.hud.FlightBarRenderer;
+import com.lenemon.client.hud.HotbarRenderer;
 import com.lenemon.client.hud.HudEditCommand;
+import com.lenemon.client.hud.HudFlightCache;
 import com.lenemon.client.hud.HudRenderer;
 import com.lenemon.client.network.LenemonNetworkClient;
 import com.lenemon.client.renderer.ExcaveonRenderer;
@@ -35,6 +38,8 @@ public class LenemonClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         HudRenderer.register();
+        HotbarRenderer.register();
+        FlightBarRenderer.register();
         // A décommenter pour activer les commandes de config /lenemonhud
         HudEditCommand.register();
         ItemDespawnRenderer.register();
@@ -80,6 +85,8 @@ public class LenemonClient implements ClientModInitializer {
 
 
 
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> HudFlightCache.tick());
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.world == null) return;

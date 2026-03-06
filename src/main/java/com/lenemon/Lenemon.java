@@ -36,6 +36,7 @@ import com.lenemon.gift.GiftDeleteSession;
 import com.lenemon.gift.GiftItemHelper;
 import com.lenemon.gift.GiftPreviewScreen;
 import com.lenemon.heal.HealPaperHelper;
+import com.lenemon.hud.HudFlightTracker;
 import com.lenemon.player.PlayerHudTicker;
 import com.lenemon.player.PlayerItemEvents;
 import com.lenemon.network.shop.ShopActionHandler;
@@ -127,6 +128,7 @@ public class Lenemon implements ModInitializer {
         PlayerHudTicker.register();      // ← nouveau
         PlayerItemEvents.register();     // ← nouveau
         ItemDespawnManager.register();   // ← nouveau
+        HudFlightTracker.register();
 
         // ── Gift ──────────────────────────────────────────────────────────────
         GiftDeleteSession.register();
