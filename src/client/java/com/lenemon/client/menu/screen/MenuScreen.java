@@ -13,18 +13,19 @@ import net.minecraft.util.Identifier;
 
 /**
  * Menu principal du mod LeNeMon.
- * Affiche deux cartes : acces au sous-menu TP et au sous-menu Chasseur.
+ * Affiche trois cartes : acces au sous-menu TP, au sous-menu Chasseur et au Pokédex.
  */
 public class MenuScreen extends Screen {
 
     // ── Dimensions ────────────────────────────────────────────────────────────
-    private static final int GUI_WIDTH  = 240;
+    private static final int GUI_WIDTH  = 295;
     private static final int GUI_HEIGHT = 180;
 
     // ── Dimensions des cartes ─────────────────────────────────────────────────
-    private static final int CARD_WIDTH  = 96;
+    private static final int CARD_WIDTH  = 82;
     private static final int CARD_HEIGHT = 100;
     private static final int CARD_Y_OFFSET = 34; // Y relatif au guiY
+    private static final int CARD_MARGIN  = 11; // marge gauche/droite et entre les cartes
 
     // ── Palette ───────────────────────────────────────────────────────────────
     private static final int COL_BG         = 0xCC0A0A1A;
@@ -44,6 +45,7 @@ public class MenuScreen extends Screen {
     // ── Coordonnees des cartes (calculees dans init() pour les hit-tests) ─────
     private int cardTpX1, cardTpX2, cardTpY1, cardTpY2;
     private int cardHunterX1, cardHunterX2, cardHunterY1, cardHunterY2;
+    private int cardDexX1, cardDexX2, cardDexY1, cardDexY2;
 
     /**
      * Cree l'ecran a partir du payload recu du serveur.
@@ -70,17 +72,23 @@ public class MenuScreen extends Screen {
         guiX = (this.width  - GUI_WIDTH)  / 2;
         guiY = (this.height - GUI_HEIGHT) / 2;
 
-        // Carte TP : guiX+12 a guiX+108
-        cardTpX1 = guiX + 12;
-        cardTpX2 = guiX + 12 + CARD_WIDTH;
+        // Carte TP
+        cardTpX1 = guiX + CARD_MARGIN;
+        cardTpX2 = cardTpX1 + CARD_WIDTH;
         cardTpY1 = guiY + CARD_Y_OFFSET;
         cardTpY2 = guiY + CARD_Y_OFFSET + CARD_HEIGHT;
 
-        // Carte Chasseur : guiX+132 a guiX+228
-        cardHunterX1 = guiX + 132;
-        cardHunterX2 = guiX + 132 + CARD_WIDTH;
+        // Carte Chasseur
+        cardHunterX1 = cardTpX1 + CARD_WIDTH + CARD_MARGIN;
+        cardHunterX2 = cardHunterX1 + CARD_WIDTH;
         cardHunterY1 = guiY + CARD_Y_OFFSET;
         cardHunterY2 = guiY + CARD_Y_OFFSET + CARD_HEIGHT;
+
+        // Carte Pokédex
+        cardDexX1 = cardHunterX1 + CARD_WIDTH + CARD_MARGIN;
+        cardDexX2 = cardDexX1 + CARD_WIDTH;
+        cardDexY1 = guiY + CARD_Y_OFFSET;
+        cardDexY2 = guiY + CARD_Y_OFFSET + CARD_HEIGHT;
     }
 
     @Override
@@ -106,6 +114,11 @@ public class MenuScreen extends Screen {
         boolean hoverHunter = isHover(mouseX, mouseY, cardHunterX1, cardHunterY1, cardHunterX2, cardHunterY2);
         renderCard(ctx, cardHunterX1, cardHunterY1, CARD_WIDTH, CARD_HEIGHT, hoverHunter);
         renderCardContentHunter(ctx, cardHunterX1, cardHunterY1, CARD_WIDTH);
+
+        // ── Carte Pokédex ─────────────────────────────────────────────────────
+        boolean hoverDex = isHover(mouseX, mouseY, cardDexX1, cardDexY1, cardDexX2, cardDexY2);
+        renderCard(ctx, cardDexX1, cardDexY1, CARD_WIDTH, CARD_HEIGHT, hoverDex);
+        renderCardContentDex(ctx, cardDexX1, cardDexY1, CARD_WIDTH);
 
         // Toujours en dernier
         super.render(ctx, mouseX, mouseY, delta);
@@ -137,6 +150,29 @@ public class MenuScreen extends Screen {
 
         // Description — word-wrap, centré
         var descLines = textRenderer.wrapLines(Text.literal("\u00a77Accedez aux mondes"), cw - 8);
+        for (int l = 0; l < descLines.size(); l++) {
+            ctx.drawCenteredTextWithShadow(textRenderer,
+                    descLines.get(l), cx + cw / 2, cy + 42 + l * 10, COL_LABEL);
+        }
+    }
+
+    /**
+     * Contenu de la carte Pokédex.
+     * Icone : cobblemon:pokedex_red, fallback COMPASS.
+     */
+    private void renderCardContentDex(DrawContext ctx, int cx, int cy, int cw) {
+        var dexItem = Registries.ITEM.get(Identifier.of("cobblemon", "pokedex_red"));
+        var iconItem = (dexItem != null && dexItem != Items.AIR) ? dexItem : Items.BOOK;
+
+        int iconX = cx + (cw - 16) / 2;
+        int iconY = cy + 6;
+        ctx.drawItem(new ItemStack(iconItem), iconX, iconY);
+
+        ctx.drawCenteredTextWithShadow(textRenderer,
+                Text.literal("\u00a7d\u00a7l\u2606 Pok\u00e9dex"),
+                cx + cw / 2, cy + 28, 0xFFFFFF);
+
+        var descLines = textRenderer.wrapLines(Text.literal("\u00a77R\u00e9compenses de capture"), cw - 4);
         for (int l = 0; l < descLines.size(); l++) {
             ctx.drawCenteredTextWithShadow(textRenderer,
                     descLines.get(l), cx + cw / 2, cy + 42 + l * 10, COL_LABEL);
@@ -198,6 +234,11 @@ public class MenuScreen extends Screen {
             // Clic carte Chasseur
             if (isHover(mouseX, mouseY, cardHunterX1, cardHunterY1, cardHunterX2, cardHunterY2)) {
                 ClientPlayNetworking.send(new MenuActionPayload("open_hunter"));
+                return true;
+            }
+            // Clic carte Pokédex
+            if (isHover(mouseX, mouseY, cardDexX1, cardDexY1, cardDexX2, cardDexY2)) {
+                ClientPlayNetworking.send(new MenuActionPayload("open_pokedex"));
                 return true;
             }
         }

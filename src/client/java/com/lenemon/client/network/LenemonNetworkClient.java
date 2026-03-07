@@ -9,6 +9,8 @@ import com.lenemon.client.hud.HudHunterCache;
 import com.lenemon.client.menu.screen.HunterMenuScreen;
 import com.lenemon.client.menu.screen.MenuScreen;
 import com.lenemon.client.menu.screen.TpMenuScreen;
+import com.lenemon.client.pokedex.screen.PokedexMenuScreen;
+import com.lenemon.network.pokedex.PokedexOpenPayload;
 import com.lenemon.network.PacketArmorEffects;
 import com.lenemon.network.PacketHudBalance;
 import com.lenemon.network.PacketHudFlight;
@@ -130,6 +132,16 @@ public class LenemonNetworkClient {
                     });
                 }
         );
+
+        // Receivers S2C pokedex
+        ClientPlayNetworking.registerGlobalReceiver(PokedexOpenPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> {
+                    if (ctx.client().currentScreen instanceof PokedexMenuScreen screen) {
+                        screen.refresh(payload); // rafraîchit sans fermer
+                    } else {
+                        ctx.client().setScreen(new PokedexMenuScreen(payload));
+                    }
+                }));
 
         // Receivers S2C menu
         ClientPlayNetworking.registerGlobalReceiver(MenuOpenPayload.ID, (payload, ctx) ->

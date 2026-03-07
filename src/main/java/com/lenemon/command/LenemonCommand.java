@@ -1,6 +1,7 @@
 package com.lenemon.command;
 
 import com.lenemon.armor.ArmorEffectHandler;
+import com.lenemon.pokedex.PokedexClaimedStorage;
 import com.lenemon.armor.BaseSpawnInfluence;
 import com.lenemon.armor.config.LoreBuilder;
 import com.lenemon.armor.sets.DevArmorSet;
@@ -61,6 +62,25 @@ public class LenemonCommand {
                                                             ctx.getSource(),
                                                             IntegerArgumentType.getInteger(ctx, "quantite")
                                                     ))
+                                            )
+                                    )
+                            )
+                            .then(CommandManager.literal("dex")
+                                    .then(CommandManager.literal("rewardreset")
+                                            .then(CommandManager.argument("player", EntityArgumentType.player())
+                                                    .then(CommandManager.argument("region", StringArgumentType.word())
+                                                            .suggests((ctx, builder) -> CommandSource.suggestMatching(
+                                                                    List.of("all", "national", "kanto", "johto", "hoenn",
+                                                                            "sinnoh", "unova", "kalos", "alola",
+                                                                            "galar", "hisui", "paldea", "unknown"),
+                                                                    builder
+                                                            ))
+                                                            .executes(ctx -> executeDexRewardReset(
+                                                                    ctx.getSource(),
+                                                                    EntityArgumentType.getPlayer(ctx, "player"),
+                                                                    StringArgumentType.getString(ctx, "region")
+                                                            ))
+                                                    )
                                             )
                                     )
                             )
@@ -182,6 +202,31 @@ public class LenemonCommand {
         );
 
         System.out.println("[LeNeMon] Excavéon reload effectué par : " + source.getName());
+        return 1;
+    }
+
+    private static int executeDexRewardReset(ServerCommandSource source, ServerPlayerEntity target, String region) {
+        String playerName = target.getName().getString();
+        int removed;
+        String label;
+
+        if (region.equalsIgnoreCase("all")) {
+            removed = PokedexClaimedStorage.resetAll(target.getUuid());
+            label   = "national";
+        } else {
+            removed = PokedexClaimedStorage.resetRegion(target.getUuid(), region.toLowerCase());
+            label   = region.toLowerCase();
+        }
+
+        if (removed == 0) {
+            source.sendMessage(Text.literal("§e[Pokédex] Aucune récompense à réinitialiser pour §f"
+                    + playerName + " §e(région: §f" + label + "§e)."));
+        } else {
+            source.sendFeedback(() -> Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                    .append(Text.literal(removed + " récompense(s) Pokédex réinitialisée(s) pour §f"
+                            + playerName + " §a(région: §f" + label + "§a).").formatted(Formatting.GREEN)),
+                    false);
+        }
         return 1;
     }
 

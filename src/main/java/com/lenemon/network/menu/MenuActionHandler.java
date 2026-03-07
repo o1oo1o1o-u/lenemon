@@ -6,6 +6,7 @@ import com.lenemon.hunter.data.HunterWorldData;
 import com.lenemon.hunter.quest.Quest;
 import com.lenemon.hunter.quest.QuestDifficulty;
 import com.lenemon.hunter.quest.QuestManager;
+import com.lenemon.pokedex.PokedexService;
 import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.registry.Registries;
@@ -27,6 +28,7 @@ public class MenuActionHandler {
                 case "open_menu"     -> sendMenuOpen(player);
                 case "open_tp"       -> sendTpMenuOpen(player);
                 case "open_hunter"   -> sendHunterMenuOpen(player);
+                case "open_pokedex"  -> PokedexService.sendPokedexOpen(player);
                 case "tp_spawn"      -> executeTP(player, "Spawn", "spawn");
                 case "tp_overworld"  -> executeTP(player, "Monde Principal", "execute in minecraft:overworld run rtp");
                 case "tp_resource"   -> executeTP(player, "Monde Ressource", "execute in multiworld:ressource1 run rtp");
@@ -60,7 +62,7 @@ public class MenuActionHandler {
         ServerPlayNetworking.send(player, payload);
     }
 
-    private static void sendTpMenuOpen(ServerPlayerEntity player) {
+    public static void sendTpMenuOpen(ServerPlayerEntity player) {
         boolean hasNether = Permissions.check(player, "custommenu.tp.nether", 2);
         boolean hasEnd    = Permissions.check(player, "custommenu.tp.end", 2);
 
@@ -68,7 +70,7 @@ public class MenuActionHandler {
         ServerPlayNetworking.send(player, payload);
     }
 
-    private static void sendHunterMenuOpen(ServerPlayerEntity player) {
+    public static void sendHunterMenuOpen(ServerPlayerEntity player) {
         HunterPlayerData data = HunterWorldData.get(player.getUuid());
 
         int level          = data.level;

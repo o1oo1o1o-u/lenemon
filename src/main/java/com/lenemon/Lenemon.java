@@ -28,6 +28,10 @@ import com.lenemon.network.pickaxe.ExcaveonOpenGuiPayload;
 import com.lenemon.network.pickaxe.ExcaveonUserConfigPayload;
 import com.lenemon.pickaxe.ExcaveonConfigLoader;
 import com.lenemon.pickaxe.ExcaveonManager;
+import com.lenemon.pokedex.PokedexClaimedStorage;
+import com.lenemon.pokedex.PokedexRewardConfig;
+import com.lenemon.pokedex.PokedexService;
+import com.lenemon.network.menu.MenuActionHandler;
 import com.lenemon.enchantment.AutoSmeltEnchantment;
 import com.lenemon.pokemon.ShinyAnnouncer;
 
@@ -119,6 +123,9 @@ public class Lenemon implements ModInitializer {
         ExcaveonManager.register();
         registerExcaveonGuiEvents();
 
+        PokedexRewardConfig.load();
+        PokedexClaimedStorage.load();
+
         QuestConfigLoader.load();
         LevelRewardConfig.load();
         HunterManager.register();
@@ -161,6 +168,7 @@ public class Lenemon implements ModInitializer {
 
         // ── Commandes ─────────────────────────────────────────────────────────
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            registerShortcutCommands(dispatcher);
             MenuCommand.register(dispatcher);
             CasinoGiveCommand.register(dispatcher);
             NightVisionCommand.register(dispatcher);
@@ -177,6 +185,40 @@ public class Lenemon implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(com.lenemon.ah.AhExpiryTicker::tick);
 
         LOGGER.info("LeNeMon: init terminé.");
+    }
+
+    private static void registerShortcutCommands(com.mojang.brigadier.CommandDispatcher<net.minecraft.server.command.ServerCommandSource> dispatcher) {
+        // /world et /monde → GUI téléportation
+        for (String alias : new String[]{"world", "monde"}) {
+            dispatcher.register(
+                    CommandManager.literal(alias)
+                            .executes(ctx -> {
+                                if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
+                                ctx.getSource().getServer().execute(() -> MenuActionHandler.sendTpMenuOpen(player));
+                                return 1;
+                            })
+            );
+        }
+        // /chasseur et /quetes → GUI Chasseur
+        for (String alias : new String[]{"chasseur", "quetes"}) {
+            dispatcher.register(
+                    CommandManager.literal(alias)
+                            .executes(ctx -> {
+                                if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
+                                ctx.getSource().getServer().execute(() -> MenuActionHandler.sendHunterMenuOpen(player));
+                                return 1;
+                            })
+            );
+        }
+        // /dex → GUI Pokédex rewards
+        dispatcher.register(
+                CommandManager.literal("dex")
+                        .executes(ctx -> {
+                            if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
+                            ctx.getSource().getServer().execute(() -> PokedexService.sendPokedexOpen(player));
+                            return 1;
+                        })
+        );
     }
 
     private static void registerShopCommands(com.mojang.brigadier.CommandDispatcher<net.minecraft.server.command.ServerCommandSource> dispatcher) {
