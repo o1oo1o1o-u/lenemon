@@ -6,9 +6,13 @@ import com.lenemon.armor.config.LoreBuilder;
 import com.lenemon.armor.sets.DevArmorSet;
 import com.lenemon.armor.sets.RayArmorSet;
 import com.lenemon.item.ModItems;
+import com.lenemon.item.pickaxe.ExcaveonPickaxe;
 import com.lenemon.network.LenemonNetwork;
+import com.lenemon.pickaxe.ExcaveonManager;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandSource;
 import net.minecraft.command.argument.EntityArgumentType;
@@ -47,6 +51,17 @@ public class LenemonCommand {
                             .then(CommandManager.literal("excaveon")
                                     .then(CommandManager.literal("reload")
                                             .executes(ctx -> executeExcaveonReload(ctx.getSource()))
+                                    )
+                            )
+                            .then(CommandManager.literal("nymphalie")
+                                    .requires(source -> Permissions.check(source, "lenemon.pickaxe.addblocks", 2))
+                                    .then(CommandManager.literal("addblocks")
+                                            .then(CommandManager.argument("quantite", IntegerArgumentType.integer(1))
+                                                    .executes(ctx -> executeNymphalieAddBlocks(
+                                                            ctx.getSource(),
+                                                            IntegerArgumentType.getInteger(ctx, "quantite")
+                                                    ))
+                                            )
                                     )
                             )
                             .then(CommandManager.literal("give")
@@ -167,6 +182,39 @@ public class LenemonCommand {
         );
 
         System.out.println("[LeNeMon] Excavéon reload effectué par : " + source.getName());
+        return 1;
+    }
+
+    private static int executeNymphalieAddBlocks(ServerCommandSource source, int quantite) {
+        ServerPlayerEntity player;
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            source.sendError(Text.literal("[LeNeMon] Cette commande doit être exécutée par un joueur."));
+            return 0;
+        }
+
+        ItemStack held = player.getMainHandStack();
+        if (!(held.getItem() instanceof ExcaveonPickaxe)) {
+            source.sendError(Text.literal("[LeNeMon] Vous devez tenir une pioche nymphalie en main."));
+            return 0;
+        }
+
+        int currentBlocks = ExcaveonPickaxe.getBlocks(held);
+        int newBlocks = currentBlocks + quantite;
+        ExcaveonPickaxe.setBlocks(held, newBlocks);
+
+        int currentLevel = ExcaveonPickaxe.getLevel(held);
+        int newLevel = ExcaveonManager.computeLevel(newBlocks);
+        if (newLevel > currentLevel) {
+            ExcaveonPickaxe.setLevel(held, newLevel);
+            ExcaveonManager.notifyLevelUp(player, newLevel);
+        }
+
+        source.sendFeedback(() -> Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                .append(Text.literal("+" + quantite + " blocs ajoutés à la nymphalie de " + player.getName().getString()
+                        + " (total : " + newBlocks + ", niveau : " + ExcaveonPickaxe.getLevel(held) + ")").formatted(Formatting.GREEN)),
+                false);
         return 1;
     }
 }

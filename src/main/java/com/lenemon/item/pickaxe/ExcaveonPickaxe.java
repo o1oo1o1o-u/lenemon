@@ -31,11 +31,26 @@ public class ExcaveonPickaxe extends PickaxeItem implements GeoItem {
     /**
      * The constant NBT_BLOCKS.
      */
-    public static final String NBT_BLOCKS = "excaveon_blocks";
+    public static final String NBT_BLOCKS       = "excaveon_blocks";
     /**
      * The constant NBT_LEVEL.
      */
-    public static final String NBT_LEVEL  = "excaveon_level";
+    public static final String NBT_LEVEL        = "excaveon_level";
+    /**
+     * NBT sub-compound that stores the player's chosen configuration.
+     */
+    public static final String NBT_USER_CFG     = "excaveon_user_cfg";
+    public static final String NBT_CFG_AUTO_SELL   = "autoSell";
+    public static final String NBT_CFG_AUTO_SMELT  = "autoSmelt";
+    public static final String NBT_CFG_MINING_MODE = "miningMode";
+
+    /** Mining mode constants. Each mode encodes both width and depth. */
+    public static final String MODE_1X1   = "1x1";
+    public static final String MODE_3X3X1 = "3x3x1";
+    public static final String MODE_3X3X2 = "3x3x2";
+    public static final String MODE_3X3X3 = "3x3x3";
+    public static final String MODE_5X5X2 = "5x5x2";  // débloqué niveau 4
+    public static final String MODE_5X5X3 = "5x5x3";  // débloqué niveau 5
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
@@ -111,6 +126,38 @@ public class ExcaveonPickaxe extends PickaxeItem implements GeoItem {
 
     private static void saveNbt(ItemStack stack, NbtCompound nbt) {
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
+    }
+
+    // === Config joueur (mining mode, auto-sell, auto-smelt) ===
+
+    /**
+     * Returns the user config stored on this stack.
+     * If absent, returns defaults appropriate for the current level.
+     */
+    public static ExcaveonUserConfig getUserConfig(ItemStack stack) {
+        NbtCompound root = getNbt(stack);
+        if (root == null || !root.contains(NBT_USER_CFG)) {
+            return ExcaveonUserConfig.defaults(getLevel(stack));
+        }
+        NbtCompound cfg = root.getCompound(NBT_USER_CFG);
+        boolean autoSell  = cfg.getBoolean(NBT_CFG_AUTO_SELL);
+        boolean autoSmelt = cfg.getBoolean(NBT_CFG_AUTO_SMELT);
+        String  mode      = cfg.getString(NBT_CFG_MINING_MODE);
+        if (mode == null || mode.isEmpty()) mode = ExcaveonUserConfig.defaults(getLevel(stack)).miningMode;
+        return new ExcaveonUserConfig(autoSell, autoSmelt, mode);
+    }
+
+    /**
+     * Writes the user config into the stack's NBT.
+     */
+    public static void setUserConfig(ItemStack stack, ExcaveonUserConfig config) {
+        NbtCompound root = getOrCreateNbt(stack);
+        NbtCompound cfg  = new NbtCompound();
+        cfg.putBoolean(NBT_CFG_AUTO_SELL,   config.autoSell);
+        cfg.putBoolean(NBT_CFG_AUTO_SMELT,  config.autoSmelt);
+        cfg.putString(NBT_CFG_MINING_MODE,  config.miningMode);
+        root.put(NBT_USER_CFG, cfg);
+        saveNbt(stack, root);
     }
 
     // === Nom dynamique ===

@@ -22,6 +22,8 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.network.ServerPlayerEntity;
 import com.lenemon.pickaxe.ExcaveonConfigLoader;
 import com.lenemon.network.PacketExcaveonConfig;
+import com.lenemon.network.pickaxe.ExcaveonOpenGuiPayload;
+import com.lenemon.network.pickaxe.ExcaveonUserConfigPayload;
 
 import java.util.List;
 
@@ -37,6 +39,10 @@ public class LenemonNetwork {
         // Enregistrer le type de packet
         PayloadTypeRegistry.playS2C().register(PacketArmorEffects.ID, PacketArmorEffects.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketExcaveonConfig.ID, PacketExcaveonConfig.CODEC);
+
+        // Excaveon GUI config payloads
+        PayloadTypeRegistry.playS2C().register(ExcaveonOpenGuiPayload.ID, ExcaveonOpenGuiPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(ExcaveonUserConfigPayload.ID, ExcaveonUserConfigPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketHudBalance.ID, PacketHudBalance.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketHudHunter.ID, PacketHudHunter.CODEC);
         PayloadTypeRegistry.playS2C().register(PacketHudFlight.ID, PacketHudFlight.CODEC);

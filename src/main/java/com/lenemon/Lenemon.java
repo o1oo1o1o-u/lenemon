@@ -21,6 +21,11 @@ import com.lenemon.item.ModItems;
 import com.lenemon.network.LenemonNetwork;
 import com.lenemon.network.PacketHudBalance;
 import com.lenemon.network.PacketHudHunter;
+import com.lenemon.item.pickaxe.ExcaveonLevel;
+import com.lenemon.item.pickaxe.ExcaveonPickaxe;
+import com.lenemon.item.pickaxe.ExcaveonUserConfig;
+import com.lenemon.network.pickaxe.ExcaveonOpenGuiPayload;
+import com.lenemon.network.pickaxe.ExcaveonUserConfigPayload;
 import com.lenemon.pickaxe.ExcaveonConfigLoader;
 import com.lenemon.pickaxe.ExcaveonManager;
 import com.lenemon.enchantment.AutoSmeltEnchantment;
@@ -112,6 +117,7 @@ public class Lenemon implements ModInitializer {
 
         ExcaveonConfigLoader.load();
         ExcaveonManager.register();
+        registerExcaveonGuiEvents();
 
         QuestConfigLoader.load();
         LevelRewardConfig.load();
@@ -411,6 +417,62 @@ public class Lenemon implements ModInitializer {
                                 )
                         )
         );
+    }
+
+    /**
+     * Registers the Excaveon GUI config system:
+     *  - UseItemCallback (server-side): shift+right-click in air with the pickaxe opens the config GUI.
+     *  - C2S receiver: validates and applies the config chosen by the player.
+     */
+    private static void registerExcaveonGuiEvents() {
+        // Shift+use in air → send S2C payload to open the GUI on the client
+        UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (world.isClient()) return TypedActionResult.pass(player.getStackInHand(hand));
+            if (!(player instanceof ServerPlayerEntity serverPlayer)) return TypedActionResult.pass(player.getStackInHand(hand));
+            if (!player.isSneaking()) return TypedActionResult.pass(player.getStackInHand(hand));
+
+            ItemStack stack = player.getStackInHand(hand);
+            if (!(stack.getItem() instanceof com.lenemon.item.pickaxe.ExcaveonPickaxe)) {
+                return TypedActionResult.pass(stack);
+            }
+
+            int level  = ExcaveonPickaxe.getLevel(stack);
+            int blocks = ExcaveonPickaxe.getBlocks(stack);
+            ExcaveonUserConfig cfg = ExcaveonPickaxe.getUserConfig(stack);
+
+            ServerPlayNetworking.send(serverPlayer, new ExcaveonOpenGuiPayload(
+                    level, blocks, cfg.autoSell, cfg.autoSmelt, cfg.miningMode
+            ));
+            return TypedActionResult.success(stack);
+        });
+
+        // C2S receiver: player confirmed a new config
+        ServerPlayNetworking.registerGlobalReceiver(ExcaveonUserConfigPayload.ID, (payload, ctx) -> {
+            ctx.server().execute(() -> {
+                ServerPlayerEntity player = ctx.player();
+                ItemStack stack = player.getMainHandStack();
+                if (!(stack.getItem() instanceof ExcaveonPickaxe)) {
+                    // Try off-hand as fallback
+                    stack = player.getOffHandStack();
+                    if (!(stack.getItem() instanceof ExcaveonPickaxe)) return;
+                }
+
+                int level = ExcaveonPickaxe.getLevel(stack);
+                ExcaveonLevel lvl = ExcaveonLevel.fromLevel(level);
+
+                // Validate autoSell: only allowed if level unlocks it
+                boolean autoSell = payload.autoSell() && lvl.autoSell;
+
+                // Validate miningMode: requested depth must not exceed level's depth
+                String mode = payload.miningMode();
+                if (!ExcaveonUserConfig.isModeUnlocked(mode, level)) {
+                    mode = ExcaveonUserConfig.bestModeForLevel(level);
+                }
+
+                ExcaveonUserConfig cfg = new ExcaveonUserConfig(autoSell, payload.autoSmelt(), mode);
+                ExcaveonPickaxe.setUserConfig(stack, cfg);
+            });
+        });
     }
 
     private static void registerGiftBlockEvents() {

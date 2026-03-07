@@ -2,6 +2,7 @@ package com.lenemon.casino;
 
 import com.lenemon.block.CasinoState;
 import com.lenemon.util.EconomyHelper;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -125,8 +126,23 @@ public final class CasinoSpinScheduler {
                 continue;
             }
 
-            // Le casino reste locked jusqu'à ce que le client envoie CasinoAnimDonePayload
-            // On ne fait rien ici — la résolution se passe dans le receiver CasinoAnimDonePayload
+            // Fallback : si le client n'a pas envoyé CasinoAnimDonePayload (écran fermé, bug réseau...),
+            // résoudre le résultat directement ici.
+            CasinoWorldData data = null;
+            CasinoWorldData.CasinoData casino = null;
+            for (var world : server.getWorlds()) {
+                var d = CasinoWorldData.get(world);
+                var c = d.getCasinoByUUID(p.casinoUuid);
+                if (c != null) { data = d; casino = c; break; }
+            }
+
+            if (casino != null && casino.locked) {
+                // CasinoAnimDonePayload jamais reçu — on force la résolution
+                CasinoSpinHandler.resolveResultFromWorldData(player, casino, data, p.win, p.price);
+                ServerPlayNetworking.send(player, new com.lenemon.casino.network.CasinoSpinResultPayload(
+                        p.win, p.win ? "Vous avez gagné !" : "Pas de chance..."));
+            }
+            // Si casino.locked == false : CasinoAnimDonePayload déjà traité, rien à faire
         }
     }
 

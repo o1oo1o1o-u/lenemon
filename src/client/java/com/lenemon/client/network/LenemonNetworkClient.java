@@ -23,6 +23,7 @@ import com.lenemon.client.shop.screen.ShopCategoryScreen;
 import com.lenemon.client.shop.screen.ShopScreen;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import com.lenemon.network.PacketExcaveonConfig;
+import com.lenemon.network.pickaxe.ExcaveonOpenGuiPayload;
 import com.lenemon.pickaxe.ExcaveonConfigLoader;
 
 import java.util.*;
@@ -46,6 +47,11 @@ public class LenemonNetworkClient {
         ClientPlayNetworking.registerGlobalReceiver(PacketExcaveonConfig.ID, (payload, context) -> {
             ExcaveonConfigLoader.setServerConfig(payload.toConfig());
         });
+
+        ClientPlayNetworking.registerGlobalReceiver(ExcaveonOpenGuiPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() ->
+                        ctx.client().setScreen(new com.lenemon.client.pickaxe.screen.ExcaveonConfigScreen(payload))
+                ));
 
         ClientPlayNetworking.registerGlobalReceiver(PacketHudBalance.ID, (payload, context) -> {
             HudBalanceCache.setBalance(payload.balance());

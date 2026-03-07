@@ -19,7 +19,7 @@ public enum ExcaveonLevel {
     /**
      * The Level 4.
      */
-    LEVEL_4("🔹 Sylvaxe lv.4",     4, 4, 4, 3, true,  0.15f, 1),
+    LEVEL_4("🔹 Sylvaxe lv.4",     4, 5, 5, 2, true,  0.15f, 1),
     /**
      * The Level 5.
      */

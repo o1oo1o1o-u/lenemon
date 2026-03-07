@@ -97,13 +97,16 @@ public class CasinoServerEvents {
 
         ServerPlayNetworking.registerGlobalReceiver(
                 CasinoAnimDonePayload.ID,
-                (payload, context) -> {
+                (payload, context) -> context.server().execute(() -> {
                     ServerPlayerEntity player = context.player();
                     if (!(player.currentScreenHandler instanceof CasinoScreenHandler handler)) return;
                     if (handler.casinoData == null) return;
 
                     var casino = handler.casinoData;
                     var data   = handler.worldData;
+
+                    // Ne résoudre que si encore locked (évite double résolution avec le fallback scheduler)
+                    if (!casino.locked) return;
 
                     CasinoSpinHandler.resolveResultFromWorldData(
                             player, casino, data, handler.getPendingWin(), casino.entryPrice);
@@ -118,7 +121,7 @@ public class CasinoServerEvents {
                     boolean allowed    = balance >= price && !casino.locked && hasPokemon;
 
                     ServerPlayNetworking.send(player, new CasinoCanSpinResponsePayload(allowed, price, balance, casino.locked));
-                }
+                })
         );
 
         ServerPlayNetworking.registerGlobalReceiver(
