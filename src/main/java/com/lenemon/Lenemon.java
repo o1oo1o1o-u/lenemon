@@ -154,6 +154,12 @@ public class Lenemon implements ModInitializer {
                 DiscordWebhookSender.send(sender.getName().getString(),
                         message.getContent().getString()));
 
+        // ── Clan chat tag ─────────────────────────────────────────────────────
+        com.lenemon.clan.ClanChatFormatter.register();
+
+        // ── Clan territoire protection ─────────────────────────────────────────
+        com.lenemon.clan.ClanTerritoryProtection.register();
+
         // ── Lifecycle serveur ─────────────────────────────────────────────────
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             NightVisionConfig.load(server);
@@ -164,6 +170,9 @@ public class Lenemon implements ModInitializer {
             VoteConfig.load(server);
             ShopConfig.reload(server);
             ShopSellService.invalidateCache();
+            // Clan system
+            com.lenemon.clan.ClanConfig.load();
+            com.lenemon.clan.ClanWorldData.register(server);
         });
 
         // ── Commandes ─────────────────────────────────────────────────────────
@@ -179,10 +188,35 @@ public class Lenemon implements ModInitializer {
             registerShopCommands(dispatcher);
             registerGiftCommands(dispatcher);
             registerAhCommands(dispatcher);
+            com.lenemon.command.ClanCommand.register(dispatcher);
         });
 
         ServerTickEvents.END_SERVER_TICK.register(CasinoSpinScheduler::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.lenemon.ah.AhExpiryTicker::tick);
+
+        // Nettoyage des invitations de clan a la deconnexion + lastSeen
+        // Le suffix LP est persistant : pas besoin de le retirer a la deconnexion.
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            UUID disconnectUuid = handler.player.getUuid();
+            com.lenemon.clan.ClanInviteSession.remove(disconnectUuid);
+            com.lenemon.clan.ClanClaimHandler.onPlayerDisconnect(disconnectUuid);
+            if (com.lenemon.clan.ClanWorldData.isInClan(disconnectUuid)) {
+                com.lenemon.clan.ClanWorldData.setLastSeen(disconnectUuid, System.currentTimeMillis());
+            }
+        });
+
+        // Synchronisation du suffix LP a la connexion (filet de securite :
+        // corrige un suffix stale si le joueur a ete kick/exclu hors-ligne)
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            UUID joinUuid = handler.player.getUuid();
+            com.lenemon.clan.Clan joinClan = com.lenemon.clan.ClanWorldData.getClanOf(joinUuid);
+            if (joinClan != null) {
+                com.lenemon.compat.LuckPermsCompat.setClanSuffix(joinUuid, joinClan.tag);
+            } else {
+                // Efface un eventuel suffix restant si le joueur n'est plus dans un clan
+                com.lenemon.compat.LuckPermsCompat.clearClanSuffix(joinUuid);
+            }
+        });
 
         LOGGER.info("LeNeMon: init terminé.");
     }

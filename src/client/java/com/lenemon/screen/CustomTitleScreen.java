@@ -3,6 +3,7 @@ package com.lenemon.screen;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
@@ -42,6 +43,7 @@ public class CustomTitleScreen extends Screen {
     protected void init() {
         int cx = this.width / 2;
         int y  = this.height / 2 - 20;
+
 
         // ① Rejoindre le serveur
         this.addDrawableChild(new StyledButton(
@@ -83,6 +85,17 @@ public class CustomTitleScreen extends Screen {
                 Text.literal("Quitter le jeu"),
                 0xFF5C1A1A, 0xFF8B2020,
                 btn -> this.client.scheduleStop()
+        ));
+        int sSize = 20; // Taille du bouton (carré)
+        int padding = 10; // Espacement avec le bord de l'écran
+
+        this.addDrawableChild(new StyledButton(
+                this.width - sSize - padding,
+                this.height - sSize - padding,
+                sSize, sSize,
+                Text.literal("🌐"), // Un simple globe ou laisse vide ""
+                0xFF3A3A3A, 0xFF5E5E5E,
+                btn -> this.client.setScreen(new MultiplayerScreen(this))
         ));
     }
 
