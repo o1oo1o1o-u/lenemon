@@ -1,6 +1,8 @@
 package com.lenemon.command;
 
 import com.lenemon.armor.ArmorEffectHandler;
+import com.lenemon.clan.Clan;
+import com.lenemon.clan.ClanWorldData;
 import com.lenemon.pokedex.PokedexClaimedStorage;
 import com.lenemon.armor.BaseSpawnInfluence;
 import com.lenemon.armor.config.LoreBuilder;
@@ -12,6 +14,7 @@ import com.lenemon.network.LenemonNetwork;
 import com.lenemon.pickaxe.ExcaveonManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -84,6 +87,67 @@ public class LenemonCommand {
                                             )
                                     )
                             )
+                            .then(CommandManager.literal("clan")
+                                    .requires(source -> Permissions.check(source, "lenemon.clan.prestige", 2))
+                                    .then(CommandManager.argument("clan", StringArgumentType.word())
+                                            .suggests((ctx, builder) -> {
+                                                String input = builder.getRemaining().toLowerCase();
+                                                for (Clan c : ClanWorldData.getAll()) {
+                                                    if (c.name.toLowerCase().startsWith(input)) builder.suggest(c.name);
+                                                    if (c.tag.toLowerCase().startsWith(input))  builder.suggest(c.tag);
+                                                }
+                                                return builder.buildFuture();
+                                            })
+                                            .then(CommandManager.literal("set")
+                                                    .then(CommandManager.literal("prestige")
+                                                            .then(CommandManager.literal("level")
+                                                                    .then(CommandManager.argument("valeur", IntegerArgumentType.integer(0))
+                                                                            .executes(ctx -> executeClanSetPrestige(
+                                                                                    ctx.getSource(),
+                                                                                    StringArgumentType.getString(ctx, "clan"),
+                                                                                    "set", "level",
+                                                                                    IntegerArgumentType.getInteger(ctx, "valeur"), 0L
+                                                                            ))
+                                                                    )
+                                                            )
+                                                            .then(CommandManager.literal("xp")
+                                                                    .then(CommandManager.argument("valeur", LongArgumentType.longArg(0))
+                                                                            .executes(ctx -> executeClanSetPrestige(
+                                                                                    ctx.getSource(),
+                                                                                    StringArgumentType.getString(ctx, "clan"),
+                                                                                    "set", "xp",
+                                                                                    0, LongArgumentType.getLong(ctx, "valeur")
+                                                                            ))
+                                                                    )
+                                                            )
+                                                    )
+                                            )
+                                            .then(CommandManager.literal("add")
+                                                    .then(CommandManager.literal("prestige")
+                                                            .then(CommandManager.literal("level")
+                                                                    .then(CommandManager.argument("valeur", IntegerArgumentType.integer(0))
+                                                                            .executes(ctx -> executeClanSetPrestige(
+                                                                                    ctx.getSource(),
+                                                                                    StringArgumentType.getString(ctx, "clan"),
+                                                                                    "add", "level",
+                                                                                    IntegerArgumentType.getInteger(ctx, "valeur"), 0L
+                                                                            ))
+                                                                    )
+                                                            )
+                                                            .then(CommandManager.literal("xp")
+                                                                    .then(CommandManager.argument("valeur", LongArgumentType.longArg(0))
+                                                                            .executes(ctx -> executeClanSetPrestige(
+                                                                                    ctx.getSource(),
+                                                                                    StringArgumentType.getString(ctx, "clan"),
+                                                                                    "add", "xp",
+                                                                                    0, LongArgumentType.getLong(ctx, "valeur")
+                                                                            ))
+                                                                    )
+                                                            )
+                                                    )
+                                            )
+                                    )
+                            )
                             .then(CommandManager.literal("give")
                                     .then(CommandManager.argument("player", EntityArgumentType.player())
                                             .then(CommandManager.argument("set", StringArgumentType.word())
@@ -106,6 +170,46 @@ public class LenemonCommand {
                             )
             );
         });
+    }
+
+    private static int executeClanSetPrestige(ServerCommandSource source, String clanArg,
+                                               String mode, String field,
+                                               int intVal, long longVal) {
+        Clan clan = null;
+        for (Clan c : ClanWorldData.getAll()) {
+            if (c.name.equalsIgnoreCase(clanArg) || c.tag.equalsIgnoreCase(clanArg)) {
+                clan = c;
+                break;
+            }
+        }
+        if (clan == null) {
+            source.sendError(Text.literal("[LeNeMon] Clan introuvable : " + clanArg));
+            return 0;
+        }
+
+        int newLevel = clan.level;
+        long newXp   = clan.xp;
+
+        switch (mode + ":" + field) {
+            case "set:level" -> newLevel = intVal;
+            case "set:xp"   -> newXp   = longVal;
+            case "add:level" -> newLevel = clan.level + intVal;
+            case "add:xp"   -> newXp   = clan.xp + longVal;
+        }
+
+        if (newLevel < 0) newLevel = 0;
+        if (newXp   < 0) newXp   = 0;
+
+        final int    finalLevel = newLevel;
+        final long   finalXp    = newXp;
+        final String clanName   = clan.name;
+
+        ClanWorldData.setLevelAndXp(clan.id, finalLevel, finalXp);
+
+        source.sendFeedback(() -> Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                .append(Text.literal("Clan §e" + clanName + "§r — Prestige level: §e"
+                        + finalLevel + "§r | XP: §e" + finalXp).formatted(Formatting.GREEN)), true);
+        return 1;
     }
 
     private static int executeReload(ServerCommandSource source) {

@@ -185,6 +185,13 @@ public class QuestManager {
 
         boolean leveledUp = data.addXp(quest.xpReward);
         if (leveledUp) onLevelUp(player, data);
+
+        // XP de clan : la completion d'une quete rapporte de l'XP au clan
+        com.lenemon.clan.ClanLevelManager.addXp(
+                player.getUuid(),
+                com.lenemon.clan.ClanLevelManager.Source.HUNTER_QUEST_COMPLETE,
+                player.getServer()
+        );
     }
 
     /**

@@ -2,6 +2,8 @@ package com.lenemon;
 
 import com.lenemon.armor.config.EffectConfig;
 import com.lenemon.client.casino.screen.CasinoScreen;
+import com.lenemon.client.clan.ClanClaimHudOverlay;
+import com.lenemon.client.clan.ClanClaimRenderer;
 import com.lenemon.casino.screen.CasinoScreenRegistry;
 import com.lenemon.client.effects.ParticleArmorEffect;
 import com.lenemon.client.hud.FlightBarRenderer;
@@ -16,8 +18,10 @@ import com.lenemon.client.renderer.armor.DevArmorRenderer;
 import com.lenemon.client.renderer.armor.RayArmorRenderer;
 import com.lenemon.guieditor.GuiEditorClient;
 import com.lenemon.item.ModItems;
+import com.lenemon.client.clan.ClanClaimSession;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.BuiltinItemRendererRegistry;
 import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.minecraft.client.render.entity.model.BipedEntityModel;
@@ -40,6 +44,8 @@ public class LenemonClient implements ClientModInitializer {
         HudRenderer.register();
         HotbarRenderer.register();
         FlightBarRenderer.register();
+        ClanClaimRenderer.register();
+        ClanClaimHudOverlay.register();
         // A décommenter pour activer les commandes de config /lenemonhud
         HudEditCommand.register();
         ItemDespawnRenderer.register();
@@ -85,6 +91,11 @@ public class LenemonClient implements ClientModInitializer {
 
 
 
+
+        // Reinitialiser la session claim a la deconnexion pour eviter que les murs
+        // persistent lors d'une reconnexion (ClanClaimSession est un singleton static)
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
+                ClanClaimSession.deactivate());
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> HudFlightCache.tick());
 

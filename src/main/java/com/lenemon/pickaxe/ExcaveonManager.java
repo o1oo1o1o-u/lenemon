@@ -1,10 +1,13 @@
 package com.lenemon.pickaxe;
 
+import com.lenemon.clan.Clan;
+import com.lenemon.clan.ClanWorldData;
 import com.lenemon.enchantment.AutoSmeltEnchantment;
 import com.lenemon.item.ModItems;
 import com.lenemon.item.pickaxe.ExcaveonLevel;
 import com.lenemon.item.pickaxe.ExcaveonPickaxe;
 import com.lenemon.item.pickaxe.ExcaveonUserConfig;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
@@ -44,6 +47,9 @@ public class ExcaveonManager {
         // Lire la config une seule fois
         ExcaveonUserConfig userCfg = ExcaveonPickaxe.getUserConfig(held);
         ExcaveonLevel lvl = ExcaveonLevel.fromLevel(ExcaveonPickaxe.getLevel(held));
+
+        // ── Protection territoire clan ─────────────────────────────────────────
+        if (!canBreakInClan(serverPlayer, serverWorld, pos)) return true; // laisse vanilla gérer (bloqué par son event)
 
         // ── Casser le bloc central ────────────────────────────────────────────
         breaking.add(pos);
@@ -136,6 +142,7 @@ public class ExcaveonManager {
                     if (targetState.isAir()) continue;
                     if (targetState.getHardness(world, target) < 0) continue;
                     if (breaking.contains(target)) continue;
+                    if (!canBreakInClan(player, world, target)) continue;
 
                     breaking.add(target);
                     BlockEntity targetBe = world.getBlockEntity(target);
@@ -174,6 +181,18 @@ public class ExcaveonManager {
         if (blocks >= lvl3) return 3;
         if (blocks >= lvl2) return 2;
         return 1;
+    }
+
+    /**
+     * Retourne true si le joueur peut casser un bloc a cette position.
+     * False si le chunk est claim par un clan dont le joueur n'est pas membre.
+     */
+    private static boolean canBreakInClan(PlayerEntity player, World world, BlockPos pos) {
+        if (!(player instanceof ServerPlayerEntity sp)) return true;
+        if (Permissions.check(sp, "lenemon.clan.bypass", 2)) return true;
+        Clan owner = ClanWorldData.getChunkOwner(world.getRegistryKey(), new net.minecraft.util.math.ChunkPos(pos));
+        if (owner == null) return true;
+        return owner.isMember(player.getUuid());
     }
 
     public static void notifyLevelUp(ServerPlayerEntity player, int newLevel) {

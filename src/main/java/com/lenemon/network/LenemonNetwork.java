@@ -134,6 +134,20 @@ public class LenemonNetwork {
         // AH payload S2C prix
         PayloadTypeRegistry.playS2C().register(com.lenemon.network.ah.AhPriceInfoPayload.ID, com.lenemon.network.ah.AhPriceInfoPayload.CODEC);
 
+        // Clan payloads S2C
+        PayloadTypeRegistry.playS2C().register(com.lenemon.network.clan.ClanGuiPayload.ID, com.lenemon.network.clan.ClanGuiPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(com.lenemon.network.clan.ClanClaimMapPayload.ID, com.lenemon.network.clan.ClanClaimMapPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(com.lenemon.network.clan.ClanClaimModePayload.ID, com.lenemon.network.clan.ClanClaimModePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(com.lenemon.network.clan.ClanClaimResultPayload.ID, com.lenemon.network.clan.ClanClaimResultPayload.CODEC);
+
+        // Clan payloads C2S
+        PayloadTypeRegistry.playC2S().register(com.lenemon.network.clan.ClanActionPayload.ID, com.lenemon.network.clan.ClanActionPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(com.lenemon.network.clan.ClanClaimActionPayload.ID, com.lenemon.network.clan.ClanClaimActionPayload.CODEC);
+
+        // Clan handlers C2S
+        ServerPlayNetworking.registerGlobalReceiver(com.lenemon.network.clan.ClanActionPayload.ID, com.lenemon.clan.ClanGuiHandler::handle);
+        ServerPlayNetworking.registerGlobalReceiver(com.lenemon.network.clan.ClanClaimActionPayload.ID, com.lenemon.clan.ClanClaimHandler::handle);
+
         // AH handlers C2S
         ServerPlayNetworking.registerGlobalReceiver(com.lenemon.network.ah.AhActionPayload.ID, com.lenemon.ah.AhActionHandler::handle);
         ServerPlayNetworking.registerGlobalReceiver(com.lenemon.network.ah.AhRequestPricePayload.ID, (payload, ctx) -> {

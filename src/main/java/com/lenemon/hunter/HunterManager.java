@@ -44,6 +44,15 @@ public class HunterManager {
             boolean legendary = pokemon.getSpecies().getLabels().contains("legendary");
 
             QuestManager.onProgress(player, QuestType.CAPTURE, species, type, shiny, legendary);
+
+            // XP de clan : capture normale
+            com.lenemon.clan.ClanLevelManager.addXp(
+                    player.getUuid(),
+                    shiny
+                            ? com.lenemon.clan.ClanLevelManager.Source.SHINY_CATCH
+                            : com.lenemon.clan.ClanLevelManager.Source.POKEMON_CATCH,
+                    player.getServer()
+            );
         });
 
         // Event faint

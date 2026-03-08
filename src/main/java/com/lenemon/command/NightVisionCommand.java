@@ -5,7 +5,8 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.lenemon.config.NightVisionConfig;
 import me.lucko.fabric.api.permissions.v0.Permissions;
-//import net.luckperms.api.LuckPermsProvider;
+import net.luckperms.api.model.user.User;
+import net.luckperms.api.node.Node;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -133,40 +134,17 @@ public class NightVisionCommand {
     private static java.util.Set<String> getPlayerGrades(net.minecraft.server.network.ServerPlayerEntity player) {
         java.util.Set<String> grades = new java.util.HashSet<>();
 
-        try {
-            Object lp = com.lenemon.compat.LuckPermsCompat.getApiOrNull();
-            if (lp == null) return grades;
+        var api = com.lenemon.compat.LuckPermsCompat.getApiOrNull();
+        if (api == null) return grades;
 
-            // lp.getUserManager()
-            java.lang.reflect.Method getUserManager = lp.getClass().getMethod("getUserManager");
-            Object userManager = getUserManager.invoke(lp);
+        User user = api.getUserManager().getUser(player.getUuid());
+        if (user == null) return grades;
 
-            // userManager.getUser(uuid)
-            java.lang.reflect.Method getUser = userManager.getClass().getMethod("getUser", java.util.UUID.class);
-            Object user = getUser.invoke(userManager, player.getUuid());
-            if (user == null) return grades;
-
-            // user.getNodes()
-            java.lang.reflect.Method getNodes = user.getClass().getMethod("getNodes");
-            Object nodesObj = getNodes.invoke(user);
-
-            if (nodesObj instanceof java.lang.Iterable<?> it) {
-                for (Object node : it) {
-                    if (node == null) continue;
-
-                    // node.getKey()
-                    java.lang.reflect.Method getKey = node.getClass().getMethod("getKey");
-                    String key = String.valueOf(getKey.invoke(node));
-
-                    // LuckPerms: groupes = "group.<name>"
-                    if (key != null && key.startsWith("group.")) {
-                        grades.add(key.substring("group.".length()));
-                    }
-                }
+        for (Node node : user.getNodes()) {
+            String key = node.getKey();
+            if (key != null && key.startsWith("group.")) {
+                grades.add(key.substring("group.".length()));
             }
-
-        } catch (Throwable e) {
-            System.err.println("[NV] Erreur LuckPerms (reflection): " + e.getMessage());
         }
 
         return grades;

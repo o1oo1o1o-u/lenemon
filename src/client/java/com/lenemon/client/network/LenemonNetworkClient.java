@@ -2,6 +2,11 @@ package com.lenemon.client.network;
 
 import com.lenemon.armor.config.EffectConfig;
 import com.lenemon.casino.network.CasinoSpinOutcomePayload;
+import com.lenemon.client.clan.ClanClaimSession;
+import com.lenemon.network.clan.ClanClaimMapPayload;
+import com.lenemon.network.clan.ClanClaimModePayload;
+import com.lenemon.network.clan.ClanClaimResultPayload;
+import net.minecraft.text.Text;
 import com.lenemon.casino.screen.CasinoScreenHandler;
 import com.lenemon.client.hud.HudBalanceCache;
 import com.lenemon.client.hud.HudFlightCache;
@@ -187,6 +192,76 @@ public class LenemonNetworkClient {
                         s.updatePriceInfo(payload.avgListedPrice(), payload.avgSoldPrice());
                     } else if (screen instanceof com.lenemon.client.ah.screen.AhSellPokemonScreen s) {
                         s.updatePriceInfo(payload.avgListedPrice(), payload.avgSoldPrice());
+                    }
+                }));
+
+        // Clan Claim receivers S2C
+        ClientPlayNetworking.registerGlobalReceiver(ClanClaimMapPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() ->
+                        ClanClaimSession.setChunks(
+                                payload.ownChunks(),
+                                payload.nearbyOther(),
+                                payload.maxClaims(),
+                                payload.usedClaims()
+                        )
+                ));
+
+        ClientPlayNetworking.registerGlobalReceiver(ClanClaimModePayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> {
+                    if (payload.active()) {
+                        ClanClaimSession.activate(payload.maxClaims(), payload.usedClaims());
+                    } else {
+                        ClanClaimSession.deactivate();
+                    }
+                }));
+
+        ClientPlayNetworking.registerGlobalReceiver(ClanClaimResultPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> {
+                    if (ctx.client().player != null) {
+                        ctx.client().player.sendMessage(
+                                Text.literal(payload.success() ? "\u00a7a" : "\u00a7c").append(payload.message()),
+                                false
+                        );
+                    }
+                    if (payload.success()) {
+                        ClanClaimSession.updateAfterResult(
+                                payload.chunkX(),
+                                payload.chunkZ(),
+                                payload.claimed(),
+                                payload.maxClaims(),
+                                payload.usedClaims()
+                        );
+                    }
+                }));
+
+        // Clan GUI receiver S2C
+        ClientPlayNetworking.registerGlobalReceiver(com.lenemon.network.clan.ClanGuiPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> {
+                    net.minecraft.client.gui.screen.Screen current = ctx.client().currentScreen;
+                    if (current instanceof com.lenemon.client.clan.screen.ClanRankConfigScreen) {
+                        com.lenemon.client.clan.screen.ClanConfigScreen config = new com.lenemon.client.clan.screen.ClanConfigScreen(payload);
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanRankConfigScreen(payload, config));
+                    } else if (current instanceof com.lenemon.client.clan.screen.ClanBankConfigScreen) {
+                        com.lenemon.client.clan.screen.ClanConfigScreen config = new com.lenemon.client.clan.screen.ClanConfigScreen(payload);
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanBankConfigScreen(payload, config));
+                    } else if (current instanceof com.lenemon.client.clan.screen.ClanPermissionsScreen) {
+                        com.lenemon.client.clan.screen.ClanConfigScreen config = new com.lenemon.client.clan.screen.ClanConfigScreen(payload);
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanPermissionsScreen(payload, config));
+                    } else if (current instanceof com.lenemon.client.clan.screen.ClanConfigScreen) {
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanConfigScreen(payload));
+                    } else if (current instanceof com.lenemon.client.clan.screen.ClanMemberScreen memberScreen) {
+                        // Trouver le membre correspondant dans le nouveau payload et refresh
+                        String memberUuid = memberScreen.getMemberUuid();
+                        com.lenemon.network.clan.ClanGuiPayload.MemberDto refreshedMember = payload.members().stream()
+                                .filter(m -> m.uuid().equals(memberUuid))
+                                .findFirst().orElse(null);
+                        if (refreshedMember != null) {
+                            ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanMemberScreen(payload, refreshedMember));
+                        } else {
+                            ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanHubScreen(payload));
+                        }
+                    } else {
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanHubScreen(payload));
                     }
                 }));
 
