@@ -13,7 +13,10 @@ import com.lenemon.network.menu.MenuOpenPayload;
 import com.lenemon.network.menu.TpMenuOpenPayload;
 import com.lenemon.network.pokedex.PokedexClaimPayload;
 import com.lenemon.network.pokedex.PokedexOpenPayload;
+import com.lenemon.network.playtime.PlaytimeClaimPayload;
+import com.lenemon.network.playtime.PlaytimeOpenPayload;
 import com.lenemon.pokedex.PokedexService;
+import com.lenemon.playtime.PlaytimeService;
 import com.lenemon.network.shop.ShopActionHandler;
 import com.lenemon.network.shop.ShopActionPayload;
 import com.lenemon.network.shop.ShopBalanceUpdatePayload;
@@ -97,6 +100,11 @@ public class LenemonNetwork {
         PayloadTypeRegistry.playC2S().register(PokedexClaimPayload.ID, PokedexClaimPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(PokedexClaimPayload.ID, (payload, ctx) ->
                 ctx.server().execute(() -> PokedexService.claimRegion(ctx.player(), payload.regionId())));
+
+        PayloadTypeRegistry.playS2C().register(PlaytimeOpenPayload.ID, PlaytimeOpenPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(PlaytimeClaimPayload.ID, PlaytimeClaimPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(PlaytimeClaimPayload.ID, (payload, ctx) ->
+                ctx.server().execute(() -> PlaytimeService.claim(ctx.player(), payload.tierId())));
 
         // Menu payloads S2C
         PayloadTypeRegistry.playS2C().register(MenuOpenPayload.ID, MenuOpenPayload.CODEC);

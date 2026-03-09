@@ -31,6 +31,8 @@ import com.lenemon.pickaxe.ExcaveonManager;
 import com.lenemon.pokedex.PokedexClaimedStorage;
 import com.lenemon.pokedex.PokedexRewardConfig;
 import com.lenemon.pokedex.PokedexService;
+import com.lenemon.playtime.PlaytimeConfig;
+import com.lenemon.playtime.PlaytimeTracker;
 import com.lenemon.network.menu.MenuActionHandler;
 import com.lenemon.enchantment.AutoSmeltEnchantment;
 import com.lenemon.pokemon.ShinyAnnouncer;
@@ -170,6 +172,7 @@ public class Lenemon implements ModInitializer {
             VoteConfig.load(server);
             com.lenemon.muffin.MuffinConfig.load(server);
             com.lenemon.muffin.MuffinPoolCache.rebuild(server);
+            PlaytimeConfig.load(server);
             ShopConfig.reload(server);
             ShopSellService.invalidateCache();
             // Clan system
@@ -188,6 +191,7 @@ public class Lenemon implements ModInitializer {
             HealPaperCommand.register(dispatcher);
             VoteCommand.register(dispatcher);
             HunterCommand.register(dispatcher);
+            PlaytimeCommand.register(dispatcher);
             registerShopCommands(dispatcher);
             registerGiftCommands(dispatcher);
             registerAhCommands(dispatcher);
@@ -197,6 +201,7 @@ public class Lenemon implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(CasinoSpinScheduler::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.lenemon.ah.AhExpiryTicker::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.lenemon.clan.ClanTerritoryMessageTracker::tick);
+        ServerTickEvents.END_SERVER_TICK.register(PlaytimeTracker::tick);
 
         // Nettoyage des invitations de clan a la deconnexion + lastSeen
         // Le suffix LP est persistant : pas besoin de le retirer a la deconnexion.
@@ -205,6 +210,7 @@ public class Lenemon implements ModInitializer {
             com.lenemon.clan.ClanInviteSession.remove(disconnectUuid);
             com.lenemon.clan.ClanClaimHandler.onPlayerDisconnect(disconnectUuid);
             com.lenemon.clan.ClanTerritoryMessageTracker.onPlayerDisconnect(disconnectUuid);
+            PlaytimeTracker.onDisconnect(handler.player);
             if (com.lenemon.clan.ClanWorldData.isInClan(disconnectUuid)) {
                 com.lenemon.clan.ClanWorldData.setLastSeen(disconnectUuid, System.currentTimeMillis());
             }
