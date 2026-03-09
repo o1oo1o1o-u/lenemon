@@ -9,6 +9,7 @@ import com.lenemon.network.clan.ClanClaimResultPayload;
 import net.minecraft.text.Text;
 import com.lenemon.casino.screen.CasinoScreenHandler;
 import com.lenemon.client.hud.HudBalanceCache;
+import com.lenemon.client.hud.HudBattleCache;
 import com.lenemon.client.hud.HudFlightCache;
 import com.lenemon.client.hud.HudHunterCache;
 import com.lenemon.client.menu.screen.HunterMenuScreen;
@@ -19,6 +20,7 @@ import com.lenemon.client.playtime.screen.PlaytimeScreen;
 import com.lenemon.network.pokedex.PokedexOpenPayload;
 import com.lenemon.network.playtime.PlaytimeOpenPayload;
 import com.lenemon.network.PacketArmorEffects;
+import com.lenemon.network.PacketHudBattle;
 import com.lenemon.network.PacketHudBalance;
 import com.lenemon.network.PacketHudFlight;
 import com.lenemon.network.PacketHudHunter;
@@ -68,6 +70,10 @@ public class LenemonNetworkClient {
 
         ClientPlayNetworking.registerGlobalReceiver(PacketHudHunter.ID, (payload, context) -> {
             HudHunterCache.set(payload.level(), payload.progress());
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(PacketHudBattle.ID, (payload, context) -> {
+            HudBattleCache.setInBattle(payload.inBattle());
         });
 
         ClientPlayNetworking.registerGlobalReceiver(PacketHudFlight.ID, (payload, context) -> {

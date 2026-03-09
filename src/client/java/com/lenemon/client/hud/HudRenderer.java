@@ -25,6 +25,7 @@ public class HudRenderer {
     private static void render(DrawContext context, RenderTickCounter tickCounter) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.options.hudHidden) return;
+        if (HudBattleCache.isInBattle()) return;
 
         int x           = HudConfig.x;
         int y           = HudConfig.y;
