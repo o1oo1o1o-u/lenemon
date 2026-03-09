@@ -15,7 +15,9 @@ import com.lenemon.client.menu.screen.HunterMenuScreen;
 import com.lenemon.client.menu.screen.MenuScreen;
 import com.lenemon.client.menu.screen.TpMenuScreen;
 import com.lenemon.client.pokedex.screen.PokedexMenuScreen;
+import com.lenemon.client.playtime.screen.PlaytimeScreen;
 import com.lenemon.network.pokedex.PokedexOpenPayload;
+import com.lenemon.network.playtime.PlaytimeOpenPayload;
 import com.lenemon.network.PacketArmorEffects;
 import com.lenemon.network.PacketHudBalance;
 import com.lenemon.network.PacketHudFlight;
@@ -147,6 +149,9 @@ public class LenemonNetworkClient {
                         ctx.client().setScreen(new PokedexMenuScreen(payload));
                     }
                 }));
+
+        ClientPlayNetworking.registerGlobalReceiver(PlaytimeOpenPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> ctx.client().setScreen(new PlaytimeScreen(payload))));
 
         // Receivers S2C menu
         ClientPlayNetworking.registerGlobalReceiver(MenuOpenPayload.ID, (payload, ctx) ->

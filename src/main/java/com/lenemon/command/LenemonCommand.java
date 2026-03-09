@@ -4,6 +4,7 @@ import com.lenemon.armor.ArmorEffectHandler;
 import com.lenemon.clan.Clan;
 import com.lenemon.clan.ClanWorldData;
 import com.lenemon.pokedex.PokedexClaimedStorage;
+import com.lenemon.playtime.PlaytimeConfig;
 import com.lenemon.armor.BaseSpawnInfluence;
 import com.lenemon.armor.config.LoreBuilder;
 import com.lenemon.armor.sets.DevArmorSet;
@@ -152,6 +153,12 @@ public class LenemonCommand {
                                             )
                                     )
                             )
+                            .then(CommandManager.literal("playtime")
+                                    .requires(source -> Permissions.check(source, "lenemon.playtime.reload", 2))
+                                    .then(CommandManager.literal("reload")
+                                            .executes(ctx -> executePlaytimeReload(ctx.getSource()))
+                                    )
+                            )
                             .then(CommandManager.literal("give")
                                     .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.argument("player", EntityArgumentType.player())
@@ -232,6 +239,15 @@ public class LenemonCommand {
         );
 
         System.out.println("[LeNeMon] Reload effectué par : " + source.getName());
+        return 1;
+    }
+
+    private static int executePlaytimeReload(ServerCommandSource source) {
+        PlaytimeConfig.load(source.getServer());
+        source.sendMessage(
+                Text.literal("[LeNeMon] ").formatted(Formatting.GOLD)
+                        .append(Text.literal("Config playtime rechargée !").formatted(Formatting.GREEN))
+        );
         return 1;
     }
 
