@@ -48,19 +48,16 @@ public final class MagicMuffinHelper {
         return switch (type) {
             case NORMAL -> List.of(
                     Text.literal("§7Donne un Pokemon aleatoire."),
-                    Text.literal("§7Pool standard + pool legendaire."),
                     Text.literal(""),
                     Text.literal("§eClic droit pour l'ouvrir")
             );
             case SHINY -> List.of(
                     Text.literal("§7Donne un Pokemon shiny garanti."),
-                    Text.literal("§7Le taux legendaire suit la config."),
                     Text.literal(""),
                     Text.literal("§eClic droit pour l'ouvrir")
             );
             case LEGENDARY -> List.of(
                     Text.literal("§7Donne un Pokemon legendaire."),
-                    Text.literal("§7Le taux shiny suit la config."),
                     Text.literal(""),
                     Text.literal("§eClic droit pour l'ouvrir")
             );
