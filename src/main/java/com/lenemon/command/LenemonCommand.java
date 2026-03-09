@@ -46,20 +46,22 @@ public class LenemonCommand {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(
                     CommandManager.literal("lenemon")
-                            .requires(source -> source.hasPermissionLevel(2)) // OP niveau 2
                             .then(CommandManager.literal("armor")
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.literal("reload")
                                             .executes(ctx -> executeReload(ctx.getSource()))
                                     )
                             )
                             .then(CommandManager.literal("excaveon")
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.literal("reload")
                                             .executes(ctx -> executeExcaveonReload(ctx.getSource()))
                                     )
                             )
                             .then(CommandManager.literal("nymphalie")
-                                    .requires(source -> Permissions.check(source, "lenemon.pickaxe.addblocks", 2))
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.literal("addblocks")
+                                            .requires(source -> Permissions.check(source, "lenemon.pickaxe.addblocks", 2))
                                             .then(CommandManager.argument("quantite", IntegerArgumentType.integer(1))
                                                     .executes(ctx -> executeNymphalieAddBlocks(
                                                             ctx.getSource(),
@@ -69,6 +71,7 @@ public class LenemonCommand {
                                     )
                             )
                             .then(CommandManager.literal("dex")
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.literal("rewardreset")
                                             .then(CommandManager.argument("player", EntityArgumentType.player())
                                                     .then(CommandManager.argument("region", StringArgumentType.word())
@@ -88,8 +91,9 @@ public class LenemonCommand {
                                     )
                             )
                             .then(CommandManager.literal("clan")
-                                    .requires(source -> Permissions.check(source, "lenemon.clan.prestige", 2))
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.argument("clan", StringArgumentType.word())
+                                            .requires(source -> Permissions.check(source, "lenemon.clan.prestige", 2))
                                             .suggests((ctx, builder) -> {
                                                 String input = builder.getRemaining().toLowerCase();
                                                 for (Clan c : ClanWorldData.getAll()) {
@@ -149,6 +153,7 @@ public class LenemonCommand {
                                     )
                             )
                             .then(CommandManager.literal("give")
+                                    .requires(source -> source.hasPermissionLevel(2))
                                     .then(CommandManager.argument("player", EntityArgumentType.player())
                                             .then(CommandManager.argument("set", StringArgumentType.word())
                                                     .suggests((ctx, builder) -> CommandSource.suggestMatching(
