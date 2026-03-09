@@ -85,6 +85,12 @@ public class Clan {
      */
     public transient Map<String, String> permissions = new HashMap<>();
 
+    /** Message affiche a l'entree dans un claim du clan. Placeholders : {clan}, {tag}. */
+    public String enterMessage = "Vous entrez dans le territoire du clan {clan}";
+
+    /** Message affiche a la sortie d'un claim du clan. Placeholders : {clan}, {tag}. */
+    public String leaveMessage = "Vous quittez le territoire du clan {clan}";
+
     public Clan() {
         this.ranks = ClanRank.defaultRanks();
         this.permissions = defaultPermissions();

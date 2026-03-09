@@ -112,6 +112,17 @@ public class ClanManager {
         return true;
     }
 
+    static boolean hasOwnerPrivileges(Clan clan, UUID uuid) {
+        if (clan == null) return false;
+        if (uuid.equals(clan.ownerUUID)) return true;
+        ClanRank rank = clan.getRankById(getMemberRankId(clan, uuid));
+        return rank != null && rank.ownerPrivileges;
+    }
+
+    static boolean isActualOwner(Clan clan, UUID uuid) {
+        return clan != null && uuid.equals(clan.ownerUUID);
+    }
+
     // -------------------------------------------------------------------------
     // Invitation / Acceptation / Refus
     // -------------------------------------------------------------------------
@@ -241,6 +252,7 @@ public class ClanManager {
         }
 
         ClanRole actorRole = clan.getRole(actorUUID);
+        boolean actorHasOwnerPrivileges = hasOwnerPrivileges(clan, actorUUID);
         if (actorRole == ClanRole.MEMBER) {
             actor.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de kicker des membres."), false);
             return false;
@@ -258,7 +270,11 @@ public class ClanManager {
         }
 
         ClanRole targetRole = clan.getRole(targetUUID);
-        if (!actorRole.canModerate(targetRole)) {
+        if (targetUUID.equals(clan.ownerUUID)) {
+            actor.sendMessage(Text.literal(ERROR + "Tu ne peux pas exclure le proprietaire du clan."), false);
+            return false;
+        }
+        if (!actorHasOwnerPrivileges && !actorRole.canModerate(targetRole)) {
             actor.sendMessage(Text.literal(ERROR + "Tu ne peux pas kicker un membre de rang superieur ou egal au tien."), false);
             return false;
         }
@@ -321,8 +337,8 @@ public class ClanManager {
             actor.sendMessage(Text.literal(ERROR + "Tu n'es dans aucun clan."), false);
             return false;
         }
-        if (clan.getRole(actorUUID) != ClanRole.OWNER) {
-            actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut promouvoir des membres."), false);
+        if (!hasOwnerPrivileges(clan, actorUUID)) {
+            actor.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de promouvoir des membres."), false);
             return false;
         }
 
@@ -344,6 +360,10 @@ public class ClanManager {
             newRole = ClanRole.OFFICER;
             actionMsg = "§e" + targetName + " §rest maintenant §6Officer§r.";
         } else if (currentRole == ClanRole.OFFICER) {
+            if (!isActualOwner(clan, actorUUID)) {
+                actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut transferer la propriete du clan."), false);
+                return false;
+            }
             // Transfert de propriete : l'ancien owner devient officer
             ClanWorldData.setRole(clan.id, actorUUID, ClanRole.OFFICER);
             newRole = ClanRole.OWNER;
@@ -376,8 +396,8 @@ public class ClanManager {
             actor.sendMessage(Text.literal(ERROR + "Tu n'es dans aucun clan."), false);
             return false;
         }
-        if (clan.getRole(actorUUID) != ClanRole.OWNER) {
-            actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut retrograder des membres."), false);
+        if (!hasOwnerPrivileges(clan, actorUUID)) {
+            actor.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de retrograder des membres."), false);
             return false;
         }
 
@@ -508,7 +528,7 @@ public class ClanManager {
         UUID actorUUID = actor.getUuid();
         Clan clan = ClanWorldData.getClanOf(actorUUID);
         if (clan == null) { actor.sendMessage(Text.literal(ERROR + "Tu n'es dans aucun clan."), false); return false; }
-        if (clan.getRole(actorUUID) != ClanRole.OWNER) { actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut promouvoir."), false); return false; }
+        if (!hasOwnerPrivileges(clan, actorUUID)) { actor.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de promouvoir."), false); return false; }
         if (!clan.isMember(targetUUID)) { actor.sendMessage(Text.literal(ERROR + "Ce joueur n'est pas dans le clan."), false); return false; }
         if (targetUUID.equals(actorUUID)) { actor.sendMessage(Text.literal(ERROR + "Tu es deja au rang maximum."), false); return false; }
 
@@ -525,6 +545,10 @@ public class ClanManager {
         String targetName = resolvePlayerName(targetUUID, server);
 
         if (newRank.id.equals("owner")) {
+            if (!isActualOwner(clan, actorUUID)) {
+                actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut transferer la propriete du clan."), false);
+                return false;
+            }
             // Transfert de propriete : l'owner actuel prend le rang juste sous owner
             ClanRank actorNewRank = sorted.size() > 1 ? sorted.get(1) : sorted.get(sorted.size() - 1);
             ClanWorldData.setMemberRankAndRole(clan.id, actorUUID, actorNewRank.id, roleForRank(clan, actorNewRank));
@@ -548,7 +572,7 @@ public class ClanManager {
         UUID actorUUID = actor.getUuid();
         Clan clan = ClanWorldData.getClanOf(actorUUID);
         if (clan == null) { actor.sendMessage(Text.literal(ERROR + "Tu n'es dans aucun clan."), false); return false; }
-        if (clan.getRole(actorUUID) != ClanRole.OWNER) { actor.sendMessage(Text.literal(ERROR + "Seul le proprietaire peut retrograder."), false); return false; }
+        if (!hasOwnerPrivileges(clan, actorUUID)) { actor.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de retrograder."), false); return false; }
         if (targetUUID.equals(actorUUID)) { actor.sendMessage(Text.literal(ERROR + "Tu ne peux pas te retrograder toi-meme."), false); return false; }
         if (!clan.isMember(targetUUID)) { actor.sendMessage(Text.literal(ERROR + "Ce joueur n'est pas dans le clan."), false); return false; }
 
@@ -657,6 +681,70 @@ public class ClanManager {
         if (sorted.isEmpty()) {
             player.sendMessage(Text.literal("§7Aucun clan pour l'instant."), false);
         }
+    }
+
+    public static boolean setTerritoryMessage(ServerPlayerEntity player, String type, String message) {
+        UUID uuid = player.getUuid();
+        Clan clan = ClanWorldData.getClanOf(uuid);
+        if (clan == null) {
+            player.sendMessage(Text.literal(ERROR + "Tu n'es dans aucun clan."), false);
+            return false;
+        }
+
+        String action = switch (type) {
+            case "enter" -> "edit_enter_message";
+            case "leave" -> "edit_leave_message";
+            default -> null;
+        };
+        if (action == null) {
+            player.sendMessage(Text.literal(ERROR + "Type de message inconnu."), false);
+            return false;
+        }
+
+        if (!ClanClaimHandler.hasPermission(clan, uuid, action)) {
+            player.sendMessage(Text.literal(ERROR + "Tu n'as pas la permission de modifier ce message."), false);
+            return false;
+        }
+
+        String sanitized = message == null ? "" : message.trim();
+        if (sanitized.isEmpty()) {
+            player.sendMessage(Text.literal(ERROR + "Le message ne peut pas etre vide."), false);
+            return false;
+        }
+
+        if ("enter".equals(type)) {
+            ClanWorldData.setEnterMessage(clan.id, sanitized);
+            player.sendMessage(Text.literal(PREFIX + "Message d'entree mis a jour :"), false);
+            player.sendMessage(Text.literal(formatTerritoryMessagePreview(clan.enterMessage, clan)), false);
+        } else {
+            ClanWorldData.setLeaveMessage(clan.id, sanitized);
+            player.sendMessage(Text.literal(PREFIX + "Message de sortie mis a jour :"), false);
+            player.sendMessage(Text.literal(formatTerritoryMessagePreview(clan.leaveMessage, clan)), false);
+        }
+        return true;
+    }
+
+    private static String formatTerritoryMessagePreview(String template, Clan clan) {
+        String resolved = template
+                .replace("{clan}", clan.name)
+                .replace("{tag}", clan.tag);
+        StringBuilder out = new StringBuilder(resolved.length());
+        for (int i = 0; i < resolved.length(); i++) {
+            char current = resolved.charAt(i);
+            if (current == '&' && i + 1 < resolved.length()) {
+                char next = Character.toLowerCase(resolved.charAt(i + 1));
+                if ((next >= '0' && next <= '9')
+                        || (next >= 'a' && next <= 'f')
+                        || (next >= 'k' && next <= 'o')
+                        || next == 'r') {
+                    out.append('§').append(next);
+                    i++;
+                    continue;
+                }
+            }
+            out.append(current);
+        }
+        return out.toString();
     }
 
     // -------------------------------------------------------------------------

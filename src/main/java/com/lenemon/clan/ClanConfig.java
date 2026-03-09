@@ -61,6 +61,8 @@ public class ClanConfig {
     public int claimBufferDistance = 10;
     /** Dimension autorisee pour les claims. */
     public String claimAllowedDimension = "minecraft:overworld";
+    /** Cooldown anti-spam des messages d'entree/sortie de territoire (ms). */
+    public long territoryMessageCooldownMs = 3000L;
 
     // --- Level economique ---
     /** Prix de base pour acheter le level 1 → 2 (en coins de banque du clan). */
