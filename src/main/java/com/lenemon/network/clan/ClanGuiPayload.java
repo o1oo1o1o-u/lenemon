@@ -25,9 +25,12 @@ public record ClanGuiPayload(
         long bankBalance,
         long createdAt,
         String viewerRole,
+        String viewerRankId,
         List<MemberDto> members,
         List<RankDto> ranks,
         Map<String, String> permissions,
+        String enterMessage,
+        String leaveMessage,
         int clanLevel,
         int maxClaims,
         int usedClaims,
@@ -49,6 +52,7 @@ public record ClanGuiPayload(
                         buf.writeLong(value.bankBalance());
                         buf.writeLong(value.createdAt());
                         buf.writeString(value.viewerRole());
+                        buf.writeString(value.viewerRankId());
                         // Members
                         buf.writeVarInt(value.members().size());
                         for (MemberDto dto : value.members()) {
@@ -68,6 +72,7 @@ public record ClanGuiPayload(
                             buf.writeString(r.colorCode());
                             buf.writeLong(r.withdrawLimit());
                             buf.writeVarInt(r.sortOrder());
+                            buf.writeBoolean(r.ownerPrivileges());
                         }
                         // Permissions
                         Map<String, String> perms = value.permissions() != null ? value.permissions() : Map.of();
@@ -76,6 +81,8 @@ public record ClanGuiPayload(
                             buf.writeString(e.getKey());
                             buf.writeString(e.getValue());
                         }
+                        buf.writeString(value.enterMessage());
+                        buf.writeString(value.leaveMessage());
                         // Champs level economique et claims
                         buf.writeVarInt(value.clanLevel());
                         buf.writeVarInt(value.maxClaims());
@@ -92,6 +99,7 @@ public record ClanGuiPayload(
                         long   bankBalance = buf.readLong();
                         long   createdAt   = buf.readLong();
                         String viewerRole  = buf.readString();
+                        String viewerRankId = buf.readString();
 
                         int memberCount = buf.readVarInt();
                         List<MemberDto> members = new ArrayList<>(memberCount);
@@ -107,7 +115,7 @@ public record ClanGuiPayload(
                         for (int i = 0; i < rankCount; i++) {
                             ranks.add(new RankDto(
                                     buf.readString(), buf.readString(),
-                                    buf.readString(), buf.readLong(), buf.readVarInt()
+                                    buf.readString(), buf.readLong(), buf.readVarInt(), buf.readBoolean()
                             ));
                         }
 
@@ -116,6 +124,8 @@ public record ClanGuiPayload(
                         for (int i = 0; i < permCount; i++) {
                             permissions.put(buf.readString(), buf.readString());
                         }
+                        String enterMessage = buf.readString();
+                        String leaveMessage = buf.readString();
 
                         int clanLevel      = buf.readVarInt();
                         int maxClaims      = buf.readVarInt();
@@ -123,7 +133,8 @@ public record ClanGuiPayload(
                         long nextLevelPrice = buf.readLong();
 
                         return new ClanGuiPayload(clanId, clanName, clanTag, level, xp,
-                                xpNextLevel, bankBalance, createdAt, viewerRole, members, ranks, permissions,
+                                xpNextLevel, bankBalance, createdAt, viewerRole, viewerRankId,
+                                members, ranks, permissions, enterMessage, leaveMessage,
                                 clanLevel, maxClaims, usedClaims, nextLevelPrice);
                     }
             );
@@ -151,5 +162,5 @@ public record ClanGuiPayload(
     ) {}
 
     /** DTO d'un rang pour le transport reseau. */
-    public record RankDto(String id, String name, String colorCode, long withdrawLimit, int sortOrder) {}
+    public record RankDto(String id, String name, String colorCode, long withdrawLimit, int sortOrder, boolean ownerPrivileges) {}
 }

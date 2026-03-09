@@ -49,6 +49,8 @@ public class ClanHubScreen extends Screen {
     private final ClanGuiPayload data;
     private final boolean isOwner;
     private final boolean isOfficer;
+    private final boolean hasOwnerPrivileges;
+    private final boolean canEditMessages;
 
     // ── Layout ────────────────────────────────────────────────────────────────
     private int gx, gy;
@@ -74,6 +76,10 @@ public class ClanHubScreen extends Screen {
         this.data      = data;
         this.isOwner   = "OWNER".equals(data.viewerRole());
         this.isOfficer = "OFFICER".equals(data.viewerRole()) || isOwner;
+        this.hasOwnerPrivileges = isOwner || data.ranks().stream()
+                .anyMatch(r -> r.id().equals(data.viewerRankId()) && r.ownerPrivileges());
+        this.canEditMessages = ClanMessageConfigScreen.canManage(data, "edit_enter_message")
+                || ClanMessageConfigScreen.canManage(data, "edit_leave_message");
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
@@ -205,7 +211,7 @@ public class ClanHubScreen extends Screen {
                 rpX, rpY + 80, COL_LABEL, false);
 
         // Bouton achat level (owner uniquement)
-        if (isOwner) {
+        if (canManageAction("buy_level")) {
             boolean canBuy = data.nextLevelPrice() > 0;
             int buyBg  = canBuy ? 0x55002200 : 0x55222222;
             int buyBdr = canBuy ? 0xFF224422 : 0xFF444444;
@@ -214,7 +220,7 @@ public class ClanHubScreen extends Screen {
         }
 
         // Boutons
-        if (isOwner) renderBtn(ctx, btnConfig,  mx, my, COL_CFG_BG,    COL_CFG_BDR,    COL_CFG_HOV);
+        if (hasOwnerPrivileges || canEditMessages) renderBtn(ctx, btnConfig,  mx, my, COL_CFG_BG,    COL_CFG_BDR,    COL_CFG_HOV);
         renderBtn(ctx, btnLeave,   mx, my, COL_ACTION_BG, COL_ACTION_BDR, COL_ACTION_HOV);
         if (isOwner) renderBtn(ctx, btnDisband, mx, my, COL_CLOSE_BG,  COL_CLOSE_BDR,  COL_CLOSE_HOV);
         renderBtn(ctx, btnClose,   mx, my, COL_CLOSE_BG,  COL_CLOSE_BDR,  COL_CLOSE_HOV);
@@ -254,11 +260,11 @@ public class ClanHubScreen extends Screen {
 
         if (isOver(btnClose, imx, imy)) { this.close(); return true; }
 
-        if (isOwner && isOver(btnConfig, imx, imy)) {
+        if ((hasOwnerPrivileges || canEditMessages) && isOver(btnConfig, imx, imy)) {
             client.setScreen(new ClanConfigScreen(data));
             return true;
         }
-        if (isOwner && data.nextLevelPrice() > 0 && isOver(btnBuyLevel, imx, imy)) {
+        if (canManageAction("buy_level") && data.nextLevelPrice() > 0 && isOver(btnBuyLevel, imx, imy)) {
             ClientPlayNetworking.send(new ClanActionPayload("buy_level"));
             return true;
         }
@@ -393,15 +399,24 @@ public class ClanHubScreen extends Screen {
     }
 
     private ClanGuiPayload.RankDto getViewerRank() {
-        String sysId = switch (data.viewerRole()) {
-            case "OWNER"   -> "owner";
-            case "OFFICER" -> "officer";
-            default        -> "member";
-        };
         for (ClanGuiPayload.RankDto r : data.ranks()) {
-            if (r.id().equals(sysId)) return r;
+            if (r.id().equals(data.viewerRankId())) return r;
         }
         return null;
+    }
+
+    private boolean canManageAction(String action) {
+        String requiredRankId = data.permissions().getOrDefault(action, "owner");
+        int viewerOrder = rankOrder(data.viewerRankId());
+        int requiredOrder = rankOrder(requiredRankId);
+        return viewerOrder <= requiredOrder;
+    }
+
+    private int rankOrder(String rankId) {
+        for (ClanGuiPayload.RankDto r : data.ranks()) {
+            if (r.id().equals(rankId)) return r.sortOrder();
+        }
+        return Integer.MAX_VALUE;
     }
 
     private static String formatDate(long ts) {

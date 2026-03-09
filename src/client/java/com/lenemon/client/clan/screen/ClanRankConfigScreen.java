@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Ecran de gestion des rangs du clan.
- * Owner peut : renommer, changer la couleur, reordonner (▲/▼), ajouter (max 20), supprimer.
+ * Permet aussi d'activer les droits owner sur un rang custom via l'etoile.
  */
 public class ClanRankConfigScreen extends Screen {
 
@@ -27,6 +27,8 @@ public class ClanRankConfigScreen extends Screen {
     private static final int ORD_H = 12;
     private static final int DEL_W = 14;
     private static final int DEL_H = 14;
+    private static final int PRIV_W = 16;
+    private static final int PRIV_H = 14;
 
     private static final int COL_BG        = 0xCC0A0A1A;
     private static final int COL_BORDER    = 0xFF2255AA;
@@ -58,11 +60,11 @@ public class ClanRankConfigScreen extends Screen {
 
     // Confirmation suppression
     private String pendingDeleteId = null;
+    private String pendingPrivilegeRankId = null;
+    private boolean pendingPrivilegeValue = false;
 
     private ClanConfigScreen.BtnLayout btnAdd;
     private ClanConfigScreen.BtnLayout btnBack;
-    private ClanConfigScreen.BtnLayout btnConfirmYes;
-    private ClanConfigScreen.BtnLayout btnConfirmNo;
 
     private static class RankState {
         String id;
@@ -71,6 +73,7 @@ public class ClanRankConfigScreen extends Screen {
         boolean isSystem;
         int colorIdx;
         int sortOrder;
+        boolean ownerPrivileges;
 
         RankState(ClanGuiPayload.RankDto dto) {
             this.id        = dto.id();
@@ -79,6 +82,7 @@ public class ClanRankConfigScreen extends Screen {
             this.isSystem  = dto.id().equals("owner") || dto.id().equals("officer") || dto.id().equals("member");
             this.colorIdx  = ClanRank.colorIndex(dto.colorCode());
             this.sortOrder = dto.sortOrder();
+            this.ownerPrivileges = dto.ownerPrivileges();
         }
     }
 
@@ -101,10 +105,6 @@ public class ClanRankConfigScreen extends Screen {
         btnAdd  = new ClanConfigScreen.BtnLayout(gx + 10, listBottom, 100, 16, "§a+ Ajouter rang");
         btnBack = new ClanConfigScreen.BtnLayout(gx + GUI_W - 80, gy + GUI_H - 22, 70, 14, "§7◄ Retour");
 
-        int cfmX = gx + (GUI_W - 180) / 2;
-        int cfmY = gy + (GUI_H - 56) / 2;
-        btnConfirmYes = new ClanConfigScreen.BtnLayout(cfmX + 8,  cfmY + 38, 76, 14, "§aOui, supprimer");
-        btnConfirmNo  = new ClanConfigScreen.BtnLayout(cfmX + 96, cfmY + 38, 76, 14, "§cAnnuler");
     }
 
     @Override
@@ -115,7 +115,7 @@ public class ClanRankConfigScreen extends Screen {
         // Titre
         ctx.drawText(textRenderer, Text.literal("§eGestion des rangs §8(" + ranks.size() + "/" + ClanRank.MAX_RANKS + ")"),
                 gx + 10, gy + 8, 0xFFFFFF, true);
-        ctx.drawText(textRenderer, Text.literal("§7Clic droit couleur | Clic renommer | ▲▼ reordonner | §c✗ §7supprimer"),
+        ctx.drawText(textRenderer, Text.literal("§7Clic droit couleur | Clic renommer | ★ droits owner | ▲▼ | §c✗"),
                 gx + 10, gy + 20, COL_LABEL, false);
         ctx.fill(gx + 8, gy + 30, gx + GUI_W - 8, gy + 31, COL_SEPARATOR);
 
@@ -179,6 +179,20 @@ public class ClanRankConfigScreen extends Screen {
                 int upY = rowY + 6;
                 boolean upHov = isOverXY(mx, my, upX, upY, ORD_W, ORD_H);
                 renderOrdBtn(ctx, upX, upY, ORD_W, ORD_H, "▲", upHov, i > 0);
+
+                int privX = upX - PRIV_W - 4;
+                int privY = rowY + 5;
+                boolean privHov = isOverXY(mx, my, privX, privY, PRIV_W, PRIV_H);
+                int privBg = rs.ownerPrivileges ? 0x55662200 : COL_BTN_BG;
+                int privBdr = rs.ownerPrivileges ? 0xFFFFCC55 : (privHov ? COL_BTN_HOV : COL_BTN_BDR);
+                ctx.fill(privX, privY, privX + PRIV_W, privY + PRIV_H, privBg);
+                ClanConfigScreen.drawBorder(ctx, privX, privY, PRIV_W, PRIV_H, privBdr);
+                ctx.drawText(textRenderer, Text.literal(rs.ownerPrivileges ? "§e★" : "§8★"),
+                        privX + 4, privY + 3, 0xFFFFFF, false);
+
+                if (privHov && pendingDeleteId == null && pendingPrivilegeRankId == null) {
+                    renderPrivilegeTooltip(ctx, mx, my, rs);
+                }
             }
         }
 
@@ -193,6 +207,9 @@ public class ClanRankConfigScreen extends Screen {
         // Modal de confirmation suppression
         if (pendingDeleteId != null) {
             renderDeleteConfirm(ctx, mx, my);
+        }
+        if (pendingPrivilegeRankId != null) {
+            renderPrivilegeConfirm(ctx, mx, my);
         }
 
         super.render(ctx, mx, my, delta);
@@ -223,10 +240,63 @@ public class ClanRankConfigScreen extends Screen {
                 cfmX + (cfmW - tw) / 2, cfmY + 10, 0xFFFFFF, true);
         ctx.drawText(textRenderer, Text.literal("§cIrreversible"),
                 cfmX + (cfmW - textRenderer.getWidth("§cIrreversible")) / 2, cfmY + 22, 0xFFFFFF, false);
+        ClanConfigScreen.BtnLayout yesBtn = modalYesButton(cfmX, cfmY, cfmW, cfmH, "§aOui, supprimer");
+        ClanConfigScreen.BtnLayout noBtn  = modalNoButton(cfmX, cfmY, cfmW, cfmH, "§cAnnuler");
+        renderBtn(ctx, yesBtn, mx, my, COL_ADD_BG,   COL_ADD_BDR,   COL_ADD_HOV);
+        renderBtn(ctx, noBtn,  mx, my, COL_CLOSE_BG, COL_CLOSE_BDR, COL_CLOSE_HOV);
         ctx.getMatrices().pop();
+    }
 
-        renderBtn(ctx, btnConfirmYes, mx, my, COL_ADD_BG,   COL_ADD_BDR,   COL_ADD_HOV);
-        renderBtn(ctx, btnConfirmNo,  mx, my, COL_CLOSE_BG, COL_CLOSE_BDR, COL_CLOSE_HOV);
+    private void renderPrivilegeConfirm(DrawContext ctx, int mx, int my) {
+        int cfmW = 236, cfmH = 92;
+        int cfmX = gx + (GUI_W - cfmW) / 2;
+        int cfmY = gy + (GUI_H - cfmH) / 2;
+
+        RankState rank = findRank(pendingPrivilegeRankId);
+        String rankName = rank != null ? rank.name : "ce rang";
+        String action = pendingPrivilegeValue ? "Activer" : "Retirer";
+        String line2 = pendingPrivilegeValue
+                ? "§7Acces : banque, rangs, permissions,"
+                : "§7Retire l'acces a la gestion avancee";
+        String line3 = pendingPrivilegeValue
+                ? "§7messages et configuration du clan."
+                : "§7du clan pour ce rang.";
+
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(0, 0, 200);
+        ctx.fill(cfmX, cfmY, cfmX + cfmW, cfmY + cfmH, 0xEE0A0A1A);
+        ClanConfigScreen.drawBorder(ctx, cfmX, cfmY, cfmW, cfmH, 0xFFFFCC55);
+        ctx.drawText(textRenderer, Text.literal("§e" + action + " les droits owner ?"),
+                cfmX + 20, cfmY + 10, 0xFFFFFF, true);
+        ctx.drawText(textRenderer, Text.literal("§fRang : " + rankName),
+                cfmX + 20, cfmY + 26, 0xFFFFFF, false);
+        ctx.drawText(textRenderer, Text.literal(line2),
+                cfmX + 20, cfmY + 40, COL_LABEL, false);
+        ctx.drawText(textRenderer, Text.literal(line3),
+                cfmX + 20, cfmY + 52, COL_LABEL, false);
+        ClanConfigScreen.BtnLayout yesBtn = modalYesButton(cfmX, cfmY, cfmW, cfmH, "§aConfirmer");
+        ClanConfigScreen.BtnLayout noBtn  = modalNoButton(cfmX, cfmY, cfmW, cfmH, "§cAnnuler");
+        renderBtn(ctx, yesBtn, mx, my, COL_ADD_BG, COL_ADD_BDR, COL_ADD_HOV);
+        renderBtn(ctx, noBtn,  mx, my, COL_CLOSE_BG, COL_CLOSE_BDR, COL_CLOSE_HOV);
+        ctx.getMatrices().pop();
+    }
+
+    private void renderPrivilegeTooltip(DrawContext ctx, int mx, int my, RankState rs) {
+        List<Text> lines = new ArrayList<>();
+        if (rs.ownerPrivileges) {
+            lines.add(Text.literal("§e★ Droits owner actifs"));
+            lines.add(Text.literal("§7Ce rang peut gerer la config avancee du clan."));
+            lines.add(Text.literal("§8Clique pour retirer ces droits."));
+        } else {
+            lines.add(Text.literal("§8★ Droits owner inactifs"));
+            lines.add(Text.literal("§7Donne a ce rang l'acces a la gestion avancee"));
+            lines.add(Text.literal("§7du clan : banque, rangs, permissions, messages."));
+            lines.add(Text.literal("§8Clique pour activer ces droits."));
+        }
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(0, 0, 300);
+        ctx.drawTooltip(textRenderer, lines, mx, my);
+        ctx.getMatrices().pop();
     }
 
     @Override
@@ -235,12 +305,30 @@ public class ClanRankConfigScreen extends Screen {
         int imy = (int) my;
 
         // Modal suppression active
-        if (pendingDeleteId != null) {
-            if (ClanConfigScreen.isOver(btnConfirmYes, imx, imy)) {
-                ClientPlayNetworking.send(new ClanActionPayload("rank_remove:" + pendingDeleteId));
+        if (pendingDeleteId != null || pendingPrivilegeRankId != null) {
+            int cfmW = pendingDeleteId != null ? 180 : 236;
+            int cfmH = pendingDeleteId != null ? 56 : 92;
+            int cfmX = gx + (GUI_W - cfmW) / 2;
+            int cfmY = gy + (GUI_H - cfmH) / 2;
+            ClanConfigScreen.BtnLayout yesBtn = modalYesButton(cfmX, cfmY, cfmW, cfmH,
+                    pendingDeleteId != null ? "§aOui, supprimer" : "§aConfirmer");
+            ClanConfigScreen.BtnLayout noBtn = modalNoButton(cfmX, cfmY, cfmW, cfmH, "§cAnnuler");
+            if (ClanConfigScreen.isOver(yesBtn, imx, imy)) {
+                if (pendingDeleteId != null) {
+                    ClientPlayNetworking.send(new ClanActionPayload("rank_remove:" + pendingDeleteId));
+                    pendingDeleteId = null;
+                } else if (pendingPrivilegeRankId != null) {
+                    RankState rank = findRank(pendingPrivilegeRankId);
+                    if (rank != null) {
+                        rank.ownerPrivileges = pendingPrivilegeValue;
+                        ClientPlayNetworking.send(new ClanActionPayload(
+                                "rank_toggle_owner_privileges:" + rank.id + ":" + pendingPrivilegeValue));
+                    }
+                    pendingPrivilegeRankId = null;
+                }
+            } else if (ClanConfigScreen.isOver(noBtn, imx, imy)) {
                 pendingDeleteId = null;
-            } else if (ClanConfigScreen.isOver(btnConfirmNo, imx, imy)) {
-                pendingDeleteId = null;
+                pendingPrivilegeRankId = null;
             }
             return true;
         }
@@ -298,6 +386,14 @@ public class ClanRankConfigScreen extends Screen {
                 int upY = rowY + 6;
                 if (isOverXY(imx, imy, upX, upY, ORD_W, ORD_H) && i > 0) {
                     ClientPlayNetworking.send(new ClanActionPayload("rank_reorder:" + rs.id + ":up"));
+                    return true;
+                }
+
+                int privX = upX - PRIV_W - 4;
+                int privY = rowY + 5;
+                if (isOverXY(imx, imy, privX, privY, PRIV_W, PRIV_H)) {
+                    pendingPrivilegeRankId = rs.id;
+                    pendingPrivilegeValue = !rs.ownerPrivileges;
                     return true;
                 }
             }
@@ -407,6 +503,21 @@ public class ClanRankConfigScreen extends Screen {
 
     private static boolean isOverXY(int mx, int my, int x, int y, int w, int h) {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    }
+
+    private RankState findRank(String rankId) {
+        for (RankState rs : ranks) {
+            if (rs.id.equals(rankId)) return rs;
+        }
+        return null;
+    }
+
+    private ClanConfigScreen.BtnLayout modalYesButton(int cfmX, int cfmY, int cfmW, int cfmH, String label) {
+        return new ClanConfigScreen.BtnLayout(cfmX + 8, cfmY + cfmH - 22, 90, 14, label);
+    }
+
+    private ClanConfigScreen.BtnLayout modalNoButton(int cfmX, int cfmY, int cfmW, int cfmH, String label) {
+        return new ClanConfigScreen.BtnLayout(cfmX + cfmW - 98, cfmY + cfmH - 22, 90, 14, label);
     }
 
     @Override

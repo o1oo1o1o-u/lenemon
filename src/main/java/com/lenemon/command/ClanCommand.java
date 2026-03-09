@@ -246,6 +246,32 @@ public class ClanCommand {
                 )
 
                 // /clan help → affiche l'aide
+                .then(CommandManager.literal("message")
+                        .then(CommandManager.literal("enter")
+                                .then(CommandManager.argument("message", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
+                                            String message = StringArgumentType.getString(ctx, "message");
+                                            ctx.getSource().getServer().execute(() ->
+                                                    ClanManager.setTerritoryMessage(player, "enter", message));
+                                            return 1;
+                                        })
+                                )
+                        )
+                        .then(CommandManager.literal("leave")
+                                .then(CommandManager.argument("message", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
+                                            String message = StringArgumentType.getString(ctx, "message");
+                                            ctx.getSource().getServer().execute(() ->
+                                                    ClanManager.setTerritoryMessage(player, "leave", message));
+                                            return 1;
+                                        })
+                                )
+                        )
+                )
+
+                // /clan help → affiche l'aide
                 .then(CommandManager.literal("help")
                         .executes(ctx -> {
                             if (!(ctx.getSource().getEntity() instanceof ServerPlayerEntity player)) return 0;
@@ -264,6 +290,8 @@ public class ClanCommand {
                             player.sendMessage(Text.literal("§e/clan claim exit§7 - Quitter le mode claim"), false);
                             player.sendMessage(Text.literal("§e/clan unclaim§7 - Retirer le claim du chunk actuel"), false);
                             player.sendMessage(Text.literal("§e/clan level§7 - Acheter le prochain level du clan"), false);
+                            player.sendMessage(Text.literal("§e/clan message enter <message>§7 - Definir le message d'entree (§7codes & autorises§7)"), false);
+                            player.sendMessage(Text.literal("§e/clan message leave <message>§7 - Definir le message de sortie (§7codes & autorises§7)"), false);
                             return 1;
                         })
                 )

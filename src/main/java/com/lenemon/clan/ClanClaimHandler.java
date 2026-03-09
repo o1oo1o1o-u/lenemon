@@ -99,6 +99,18 @@ public class ClanClaimHandler {
         claimModePlayers.remove(uuid);
     }
 
+    public static boolean hasPermission(Clan clan, UUID playerUUID, String action) {
+        String requiredRankId = clan.permissions.getOrDefault(action, "owner");
+        String playerRankId   = ClanManager.getMemberRankId(clan, playerUUID);
+
+        ClanRank required = clan.getRankById(requiredRankId);
+        ClanRank player_  = clan.getRankById(playerRankId);
+        if (required == null || player_ == null) return false;
+
+        // Un joueur avec un sortOrder <= au requis a la permission
+        return player_.sortOrder <= required.sortOrder;
+    }
+
     // -------------------------------------------------------------------------
     // Claim / Unclaim
     // -------------------------------------------------------------------------
@@ -336,18 +348,6 @@ public class ClanClaimHandler {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
-
-    private static boolean hasPermission(Clan clan, UUID playerUUID, String action) {
-        String requiredRankId = clan.permissions.getOrDefault(action, "owner");
-        String playerRankId   = ClanManager.getMemberRankId(clan, playerUUID);
-
-        ClanRank required = clan.getRankById(requiredRankId);
-        ClanRank player_  = clan.getRankById(playerRankId);
-        if (required == null || player_ == null) return false;
-
-        // Un joueur avec un sortOrder <= au requis a la permission
-        return player_.sortOrder <= required.sortOrder;
-    }
 
     private static boolean isAllowedDimension(ServerPlayerEntity player) {
         String dimId = player.getWorld().getRegistryKey().getValue().toString();

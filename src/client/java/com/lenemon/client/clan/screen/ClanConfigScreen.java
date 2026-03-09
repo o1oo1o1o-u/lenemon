@@ -8,13 +8,13 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
 /**
- * Ecran principal de configuration du clan (accessible owner only).
+ * Ecran principal de configuration du clan.
  * Hub avec des boutons vers les sous-ecrans de config.
  */
 public class ClanConfigScreen extends Screen {
 
     private static final int GUI_W = 240;
-    private static final int GUI_H = 220; // agrandi pour accueillir 3 boutons
+    private static final int GUI_H = 252;
 
     private static final int COL_BG        = 0xCC0A0A1A;
     private static final int COL_BORDER    = 0xFF2255AA;
@@ -36,6 +36,7 @@ public class ClanConfigScreen extends Screen {
     private BtnLayout btnBank;
     private BtnLayout btnRanks;
     private BtnLayout btnPerms;
+    private BtnLayout btnMessages;
     private BtnLayout btnBack;
 
     public ClanConfigScreen(ClanGuiPayload data) {
@@ -51,10 +52,12 @@ public class ClanConfigScreen extends Screen {
         int bx = gx + (GUI_W - 160) / 2;
         int bw = 160;
         int bh = 24;
+        int by = gy + 60;
 
-        btnBank  = new BtnLayout(bx, gy + 60,         bw, bh, "§e Banque du clan");
-        btnRanks = new BtnLayout(bx, gy + 60 + 32,    bw, bh, "§b Gestion des rangs");
-        btnPerms = new BtnLayout(bx, gy + 60 + 32 * 2, bw, bh, "§d Permissions");
+        btnBank  = new BtnLayout(bx, by, bw, bh, "§e Banque du clan");
+        btnRanks = new BtnLayout(bx, by + 32, bw, bh, "§b Gestion des rangs");
+        btnPerms = new BtnLayout(bx, by + 64, bw, bh, "§d Permissions");
+        btnMessages = new BtnLayout(bx, by + 96, bw, bh, "§a Messages territoire");
         btnBack  = new BtnLayout(gx + GUI_W - 80, gy + GUI_H - 22, 70, 14, "§7◄ Retour");
     }
 
@@ -70,9 +73,10 @@ public class ClanConfigScreen extends Screen {
 
         ctx.drawText(textRenderer, Text.literal("§7Choisir une categorie :"), gx + 10, gy + 32, COL_LABEL, false);
 
-        renderBtn(ctx, btnBank,  mx, my, COL_BTN_BG,  COL_BTN_BDR,  COL_BTN_HOV);
-        renderBtn(ctx, btnRanks, mx, my, COL_BTN_BG,  COL_BTN_BDR,  COL_BTN_HOV);
-        renderBtn(ctx, btnPerms, mx, my, COL_PERM_BG, COL_PERM_BDR, COL_PERM_HOV);
+        if (hasOwnerPrivileges()) renderBtn(ctx, btnBank,  mx, my, COL_BTN_BG,  COL_BTN_BDR,  COL_BTN_HOV);
+        if (hasOwnerPrivileges()) renderBtn(ctx, btnRanks, mx, my, COL_BTN_BG,  COL_BTN_BDR,  COL_BTN_HOV);
+        if (hasOwnerPrivileges()) renderBtn(ctx, btnPerms, mx, my, COL_PERM_BG, COL_PERM_BDR, COL_PERM_HOV);
+        if (canEditMessages()) renderBtn(ctx, btnMessages, mx, my, 0x55002200, 0xFF225522, 0xFF44AA44);
         renderBtn(ctx, btnBack,  mx, my, COL_CLOSE_BG, COL_CLOSE_BDR, COL_CLOSE_HOV);
 
         super.render(ctx, mx, my, delta);
@@ -83,16 +87,20 @@ public class ClanConfigScreen extends Screen {
         int imx = (int) mx;
         int imy = (int) my;
 
-        if (isOver(btnBank, imx, imy)) {
+        if (hasOwnerPrivileges() && isOver(btnBank, imx, imy)) {
             client.setScreen(new ClanBankConfigScreen(data, this));
             return true;
         }
-        if (isOver(btnRanks, imx, imy)) {
+        if (hasOwnerPrivileges() && isOver(btnRanks, imx, imy)) {
             client.setScreen(new ClanRankConfigScreen(data, this));
             return true;
         }
-        if (isOver(btnPerms, imx, imy)) {
+        if (hasOwnerPrivileges() && isOver(btnPerms, imx, imy)) {
             client.setScreen(new ClanPermissionsScreen(data, this));
+            return true;
+        }
+        if (canEditMessages() && isOver(btnMessages, imx, imy)) {
+            client.setScreen(new ClanMessageConfigScreen(data, this));
             return true;
         }
         if (isOver(btnBack, imx, imy)) {
@@ -107,6 +115,21 @@ public class ClanConfigScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext ctx, int mx, int my, float delta) {}
+
+    private boolean isOwner() {
+        return "OWNER".equals(data.viewerRole());
+    }
+
+    private boolean hasOwnerPrivileges() {
+        if (isOwner()) return true;
+        return data.ranks().stream()
+                .anyMatch(r -> r.id().equals(data.viewerRankId()) && r.ownerPrivileges());
+    }
+
+    private boolean canEditMessages() {
+        return ClanMessageConfigScreen.canManage(data, "edit_enter_message")
+                || ClanMessageConfigScreen.canManage(data, "edit_leave_message");
+    }
 
     // ── Helpers (statiques, reutilises par les sous-ecrans) ──────────────────
 

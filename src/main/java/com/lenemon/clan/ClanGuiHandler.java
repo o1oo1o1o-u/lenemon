@@ -85,7 +85,7 @@ public class ClanGuiHandler {
                 sendGuiOpen(player); // refresh GUI
                 return;
             }
-            // ── Gestion des rangs (owner uniquement) ──────────────────────────────
+            // ── Gestion des rangs / configuration avancee ────────────────────────
             if (action.startsWith("rank_set_limit:")) {
                 // rank_set_limit:<rankId>:<amount>   (-1 = illimite)
                 String[] parts = action.substring(15).split(":", 2);
@@ -93,7 +93,7 @@ public class ClanGuiHandler {
                     try {
                         long limit = Long.parseLong(parts[1]);
                         Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                        if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                        if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                             // -1 = illimite, sinon clamp a >= 0
                             long sanitized = (limit == -1L) ? -1L : Math.max(0L, limit);
                             ClanWorldData.setRankWithdrawLimit(clan.id, parts[0], sanitized);
@@ -114,7 +114,7 @@ public class ClanGuiHandler {
                     String name      = rest.substring(0, sep);
                     String colorCode = rest.substring(sep + 1);
                     Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                    if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                    if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                         if (!ClanWorldData.addRank(clan.id, name, colorCode)) {
                             player.sendMessage(Text.literal(ERROR + "Limite de " + ClanRank.MAX_RANKS + " rangs atteinte."), false);
                         }
@@ -126,7 +126,7 @@ public class ClanGuiHandler {
             if (action.startsWith("rank_remove:")) {
                 String rankId = action.substring(12);
                 Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                     if (!ClanWorldData.removeRank(clan.id, rankId)) {
                         player.sendMessage(Text.literal(ERROR + "Ce rang ne peut pas etre supprime."), false);
                     }
@@ -143,7 +143,7 @@ public class ClanGuiHandler {
                     String newName = rest.substring(sep + 1).trim();
                     if (!newName.isEmpty() && newName.length() <= 24) {
                         Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                        if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                        if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                             ClanWorldData.renameRank(clan.id, rankId, newName);
                         }
                     }
@@ -159,11 +159,25 @@ public class ClanGuiHandler {
                     String rankId    = rest.substring(0, sep);
                     String colorCode = rest.substring(sep + 1);
                     Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                    if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                    if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                         ClanWorldData.setRankColor(clan.id, rankId, colorCode);
                     }
                 }
                 sendGuiOpen(player); // refresh pour syncer la couleur
+                return;
+            }
+            if (action.startsWith("rank_toggle_owner_privileges:")) {
+                String rest = action.substring("rank_toggle_owner_privileges:".length());
+                int sep = rest.indexOf(":");
+                if (sep > 0) {
+                    String rankId = rest.substring(0, sep);
+                    boolean enabled = Boolean.parseBoolean(rest.substring(sep + 1));
+                    Clan clan = ClanWorldData.getClanOf(player.getUuid());
+                    if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
+                        ClanWorldData.setRankOwnerPrivileges(clan.id, rankId, enabled);
+                    }
+                }
+                sendGuiOpen(player);
                 return;
             }
             if (action.startsWith("rank_reorder:")) {
@@ -175,7 +189,7 @@ public class ClanGuiHandler {
                     String direction = rest.substring(sep + 1);
                     boolean moveUp  = "up".equals(direction);
                     Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                    if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                    if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                         ClanWorldData.reorderRank(clan.id, rankId, moveUp);
                     }
                     sendGuiOpen(player);
@@ -190,7 +204,7 @@ public class ClanGuiHandler {
                     String permAction  = rest.substring(0, sep);
                     String requiredRole = rest.substring(sep + 1);
                     Clan clan = ClanWorldData.getClanOf(player.getUuid());
-                    if (clan != null && clan.getRole(player.getUuid()) == ClanRole.OWNER) {
+                    if (clan != null && ClanManager.hasOwnerPrivileges(clan, player.getUuid())) {
                         // Valider que le rankId existe dans le clan
                         boolean validRankId = clan.ranks.stream().anyMatch(r -> r.id.equals(requiredRole));
                         if (validRankId) {
@@ -199,6 +213,16 @@ public class ClanGuiHandler {
                     }
                     sendGuiOpen(player);
                 }
+                return;
+            }
+            if (action.startsWith("set_enter_message:")) {
+                ClanManager.setTerritoryMessage(player, "enter", action.substring("set_enter_message:".length()));
+                sendGuiOpen(player);
+                return;
+            }
+            if (action.startsWith("set_leave_message:")) {
+                ClanManager.setTerritoryMessage(player, "leave", action.substring("set_leave_message:".length()));
+                sendGuiOpen(player);
                 return;
             }
             if (action.startsWith("deposit:")) {
@@ -233,6 +257,7 @@ public class ClanGuiHandler {
     private static ClanGuiPayload buildPayload(Clan clan, ServerPlayerEntity viewer) {
         MinecraftServer server = viewer.getServer();
         ClanRole viewerRole = clan.getRole(viewer.getUuid());
+        String viewerRankId = ClanManager.getMemberRankId(clan, viewer.getUuid());
         long xpNext = ClanConfig.get().xpRequiredForLevel(clan.level + 1);
 
         List<ClanGuiPayload.MemberDto> memberDtos = new ArrayList<>();
@@ -263,7 +288,7 @@ public class ClanGuiHandler {
 
         List<ClanGuiPayload.RankDto> rankDtos = clan.ranks.stream()
                 .sorted(java.util.Comparator.comparingInt(r -> r.sortOrder))
-                .map(r -> new ClanGuiPayload.RankDto(r.id, r.name, r.colorCode, r.withdrawLimit, r.sortOrder))
+                .map(r -> new ClanGuiPayload.RankDto(r.id, r.name, r.colorCode, r.withdrawLimit, r.sortOrder, r.ownerPrivileges))
                 .collect(Collectors.toList());
 
         return new ClanGuiPayload(
@@ -276,9 +301,12 @@ public class ClanGuiHandler {
                 clan.bankBalance,
                 clan.createdAt,
                 viewerRole != null ? viewerRole.name() : "MEMBER",
+                viewerRankId,
                 memberDtos,
                 rankDtos,
                 clan.permissions != null ? new java.util.HashMap<>(clan.permissions) : java.util.Map.of(),
+                clan.enterMessage != null ? clan.enterMessage : "",
+                clan.leaveMessage != null ? clan.leaveMessage : "",
                 clan.clanLevel,
                 clan.maxClaims(),
                 clan.claimedChunks.size(),
@@ -293,6 +321,7 @@ public class ClanGuiHandler {
             if (clan == null) return;
 
             ClanRole actorRole = clan.getRole(actor.getUuid());
+            boolean actorHasOwnerPrivileges = ClanManager.hasOwnerPrivileges(clan, actor.getUuid());
             if (actorRole == null || actorRole == ClanRole.MEMBER) {
                 actor.sendMessage(Text.literal(ERROR + "Permission insuffisante."), false);
                 return;
@@ -302,7 +331,11 @@ public class ClanGuiHandler {
                 actor.sendMessage(Text.literal(ERROR + "Ce joueur n'est pas dans le clan."), false);
                 return;
             }
-            if (!actorRole.canModerate(targetRole)) {
+            if (targetUuid.equals(clan.ownerUUID)) {
+                actor.sendMessage(Text.literal(ERROR + "Tu ne peux pas kicker le proprietaire."), false);
+                return;
+            }
+            if (!actorHasOwnerPrivileges && !actorRole.canModerate(targetRole)) {
                 actor.sendMessage(Text.literal(ERROR + "Tu ne peux pas kicker ce joueur."), false);
                 return;
             }

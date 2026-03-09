@@ -282,6 +282,15 @@ public class ClanWorldData {
         save();
     }
 
+    public static void setRankOwnerPrivileges(UUID clanId, String rankId, boolean enabled) {
+        Clan clan = clans.get(clanId);
+        if (clan == null) return;
+        ClanRank rank = clan.getRankById(rankId);
+        if (rank == null || rank.isSystemRank()) return;
+        rank.ownerPrivileges = enabled;
+        save();
+    }
+
     /**
      * Echange le sortOrder de deux rangs adjacents (monter ou descendre).
      * Rangs systeme (owner/officer/member) ne peuvent pas etre reordonnees.
@@ -328,6 +337,33 @@ public class ClanWorldData {
         save();
     }
 
+    public static void setEnterMessage(UUID clanId, String message) {
+        Clan clan = clans.get(clanId);
+        if (clan == null) return;
+        clan.enterMessage = sanitizeTerritoryMessage(message, true);
+        save();
+    }
+
+    public static void setLeaveMessage(UUID clanId, String message) {
+        Clan clan = clans.get(clanId);
+        if (clan == null) return;
+        clan.leaveMessage = sanitizeTerritoryMessage(message, false);
+        save();
+    }
+
+    private static String sanitizeTerritoryMessage(String message, boolean enter) {
+        String sanitized = message == null ? "" : message.trim();
+        if (sanitized.isEmpty()) {
+            return enter
+                    ? "Vous entrez dans le territoire du clan {clan}"
+                    : "Vous quittez le territoire du clan {clan}";
+        }
+        if (sanitized.length() > 120) {
+            sanitized = sanitized.substring(0, 120);
+        }
+        return sanitized;
+    }
+
     /** Garantit que les 3 rangs systeme sont presents dans un clan (migration). */
     private static void ensureSystemRanks(Clan clan) {
         String[] sysIds    = {"owner",   "officer", "member"};
@@ -340,6 +376,9 @@ public class ClanWorldData {
             if (clan.ranks.stream().noneMatch(r -> r.id.equals(sid))) {
                 clan.ranks.add(new ClanRank(sid, sysNames[i], sysColors[i], sysLimits[i], sysOrders[i]));
             }
+        }
+        for (ClanRank rank : clan.ranks) {
+            if ("owner".equals(rank.id)) rank.ownerPrivileges = true;
         }
         clan.ranks.sort(java.util.Comparator.comparingInt(r -> r.sortOrder));
     }
@@ -470,6 +509,8 @@ public class ClanWorldData {
                 obj.addProperty("xp", clan.xp);
                 obj.addProperty("createdAt", clan.createdAt);
                 obj.addProperty("clanLevel", clan.clanLevel);
+                obj.addProperty("enterMessage", sanitizeTerritoryMessage(clan.enterMessage, true));
+                obj.addProperty("leaveMessage", sanitizeTerritoryMessage(clan.leaveMessage, false));
 
                 // Rangs personnalises
                 JsonArray ranksArr = new JsonArray();
@@ -480,6 +521,7 @@ public class ClanWorldData {
                     ro.addProperty("colorCode", rank.colorCode);
                     ro.addProperty("withdrawLimit", rank.withdrawLimit);
                     ro.addProperty("sortOrder", rank.sortOrder);
+                    ro.addProperty("ownerPrivileges", rank.ownerPrivileges);
                     ranksArr.add(ro);
                 }
                 obj.add("ranks", ranksArr);
@@ -567,6 +609,12 @@ public class ClanWorldData {
                 clan.level = obj.get("level").getAsInt();
                 clan.xp = obj.get("xp").getAsLong();
                 clan.createdAt = obj.get("createdAt").getAsLong();
+                clan.enterMessage = obj.has("enterMessage")
+                        ? sanitizeTerritoryMessage(obj.get("enterMessage").getAsString(), true)
+                        : "Vous entrez dans le territoire du clan {clan}";
+                clan.leaveMessage = obj.has("leaveMessage")
+                        ? sanitizeTerritoryMessage(obj.get("leaveMessage").getAsString(), false)
+                        : "Vous quittez le territoire du clan {clan}";
 
                 // Niveau economique (migration : defaut 1 si absent)
                 clan.clanLevel = obj.has("clanLevel") ? obj.get("clanLevel").getAsInt() : 1;
@@ -582,6 +630,7 @@ public class ClanWorldData {
                         rank.colorCode    = ro.get("colorCode").getAsString();
                         rank.withdrawLimit = ro.get("withdrawLimit").getAsLong();
                         rank.sortOrder    = ro.get("sortOrder").getAsInt();
+                        rank.ownerPrivileges = ro.has("ownerPrivileges") && ro.get("ownerPrivileges").getAsBoolean();
                         clan.ranks.add(rank);
                     }
                 }

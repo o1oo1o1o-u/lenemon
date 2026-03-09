@@ -244,9 +244,10 @@ public class LenemonNetworkClient {
                     } else if (current instanceof com.lenemon.client.clan.screen.ClanBankConfigScreen) {
                         com.lenemon.client.clan.screen.ClanConfigScreen config = new com.lenemon.client.clan.screen.ClanConfigScreen(payload);
                         ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanBankConfigScreen(payload, config));
-                    } else if (current instanceof com.lenemon.client.clan.screen.ClanPermissionsScreen) {
+                    } else if (current instanceof com.lenemon.client.clan.screen.ClanPermissionsScreen permissionsScreen) {
                         com.lenemon.client.clan.screen.ClanConfigScreen config = new com.lenemon.client.clan.screen.ClanConfigScreen(payload);
-                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanPermissionsScreen(payload, config));
+                        ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanPermissionsScreen(
+                                payload, config, permissionsScreen.getScrollOffset()));
                     } else if (current instanceof com.lenemon.client.clan.screen.ClanConfigScreen) {
                         ctx.client().setScreen(new com.lenemon.client.clan.screen.ClanConfigScreen(payload));
                     } else if (current instanceof com.lenemon.client.clan.screen.ClanMemberScreen memberScreen) {

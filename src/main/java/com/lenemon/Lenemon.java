@@ -193,6 +193,7 @@ public class Lenemon implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(CasinoSpinScheduler::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.lenemon.ah.AhExpiryTicker::tick);
+        ServerTickEvents.END_SERVER_TICK.register(com.lenemon.clan.ClanTerritoryMessageTracker::tick);
 
         // Nettoyage des invitations de clan a la deconnexion + lastSeen
         // Le suffix LP est persistant : pas besoin de le retirer a la deconnexion.
@@ -200,6 +201,7 @@ public class Lenemon implements ModInitializer {
             UUID disconnectUuid = handler.player.getUuid();
             com.lenemon.clan.ClanInviteSession.remove(disconnectUuid);
             com.lenemon.clan.ClanClaimHandler.onPlayerDisconnect(disconnectUuid);
+            com.lenemon.clan.ClanTerritoryMessageTracker.onPlayerDisconnect(disconnectUuid);
             if (com.lenemon.clan.ClanWorldData.isInClan(disconnectUuid)) {
                 com.lenemon.clan.ClanWorldData.setLastSeen(disconnectUuid, System.currentTimeMillis());
             }

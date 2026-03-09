@@ -31,6 +31,12 @@ public class ClanRank {
      */
     public int sortOrder;
 
+    /**
+     * Si true, ce rang custom accede aux outils de gestion reserves au proprietaire,
+     * hors dissolution du clan et transfert de propriete.
+     */
+    public boolean ownerPrivileges;
+
     public ClanRank() {}
 
     public ClanRank(String id, String name, String colorCode, long withdrawLimit, int sortOrder) {
@@ -39,6 +45,7 @@ public class ClanRank {
         this.colorCode = colorCode;
         this.withdrawLimit = withdrawLimit;
         this.sortOrder = sortOrder;
+        this.ownerPrivileges = "owner".equals(id);
     }
 
     /** Vrai si ce rang est un rang systeme (non supprimable). */

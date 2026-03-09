@@ -50,6 +50,7 @@ public class ClanMemberScreen extends Screen {
     private final ClanGuiPayload.MemberDto member;
     private final boolean viewerIsOwner;
     private final boolean viewerIsOfficer;
+    private final boolean viewerHasOwnerPrivileges;
 
     private int gx, gy;
 
@@ -74,6 +75,8 @@ public class ClanMemberScreen extends Screen {
         this.member         = member;
         this.viewerIsOwner  = "OWNER".equals(data.viewerRole());
         this.viewerIsOfficer = "OFFICER".equals(data.viewerRole()) || viewerIsOwner;
+        this.viewerHasOwnerPrivileges = viewerIsOwner || data.ranks().stream()
+                .anyMatch(r -> r.id().equals(data.viewerRankId()) && r.ownerPrivileges());
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
@@ -156,8 +159,8 @@ public class ClanMemberScreen extends Screen {
         ctx.fill(gx + 8, gy + GUI_H - 56, gx + GUI_W - 8, gy + GUI_H - 55, COL_SEPARATOR);
 
         // Boutons d'action : grisés si le viewer n'a pas les permissions
-        boolean canPromote = viewerIsOwner && !member.rankId().equals("owner");
-        boolean canDemote  = viewerIsOwner && !member.rankId().equals("owner") && !isAtLowestRank();
+        boolean canPromote = viewerHasOwnerPrivileges && !member.rankId().equals("owner");
+        boolean canDemote  = viewerHasOwnerPrivileges && !member.rankId().equals("owner") && !isAtLowestRank();
         boolean canKick    = viewerIsOfficer && !member.role().equals("OWNER");
 
         renderActionBtn(ctx, btnPromote, mx, my, canPromote,
@@ -204,8 +207,8 @@ public class ClanMemberScreen extends Screen {
             return true;
         }
 
-        boolean canPromote = viewerIsOwner && !member.rankId().equals("owner");
-        boolean canDemote  = viewerIsOwner && !member.rankId().equals("owner") && !isAtLowestRank();
+        boolean canPromote = viewerHasOwnerPrivileges && !member.rankId().equals("owner");
+        boolean canDemote  = viewerHasOwnerPrivileges && !member.rankId().equals("owner") && !isAtLowestRank();
         boolean canKick    = viewerIsOfficer && !member.role().equals("OWNER");
 
         if (canPromote && isOver(btnPromote, imx, imy)) {
