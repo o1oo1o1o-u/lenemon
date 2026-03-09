@@ -168,6 +168,8 @@ public class Lenemon implements ModInitializer {
             VoteRewardManager.register();
             VoteRewardManager.processPending(server);
             VoteConfig.load(server);
+            com.lenemon.muffin.MuffinConfig.load(server);
+            com.lenemon.muffin.MuffinPoolCache.rebuild(server);
             ShopConfig.reload(server);
             ShopSellService.invalidateCache();
             // Clan system
@@ -180,6 +182,7 @@ public class Lenemon implements ModInitializer {
             registerShortcutCommands(dispatcher);
             MenuCommand.register(dispatcher);
             CasinoGiveCommand.register(dispatcher);
+            MuffinCommand.register(dispatcher);
             NightVisionCommand.register(dispatcher);
             FlyFeatherCommand.register(dispatcher);
             HealPaperCommand.register(dispatcher);
