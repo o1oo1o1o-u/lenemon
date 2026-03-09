@@ -7,6 +7,7 @@ import com.lenemon.armor.bonus.ShinyBonus;
 import com.lenemon.casino.*;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import com.lenemon.discord.DiscordWebhookConfig;
+import com.lenemon.discord.DiscordLinkConfig;
 import com.lenemon.discord.DiscordCommand;
 import com.lenemon.discord.DiscordWebhookSender;
 import com.lenemon.casino.screen.CasinoScreenRegistry;
@@ -151,6 +152,7 @@ public class Lenemon implements ModInitializer {
 
         // ── Discord ───────────────────────────────────────────────────────────
         DiscordWebhookConfig.load();
+        DiscordLinkConfig.load();
         DiscordCommand.register();
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) ->
                 DiscordWebhookSender.send(sender.getName().getString(),
